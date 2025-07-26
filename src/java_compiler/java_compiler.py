@@ -1,4 +1,6 @@
 
 
 class JavaCompiler:
-    raise NotImplementedError("JavaCompiler is not implemented yet")
+
+    def __init__(self):
+        pass
