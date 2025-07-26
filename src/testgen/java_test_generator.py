@@ -11,12 +11,12 @@ from subject.subject import Subject
 
 class JavaTestGenerator:
 
-    def __init__(self, subject: Subject, specs: Specs):
+    def __init__(self, subject: Subject):
         self.llm_service = LLMService()
+
         # It could potentially be constructed from the subject
         self.java_compiler = JavaCompiler()
         self.subject = subject
-        self.specs = specs
         self.prompts = []
         self.llm_response = ""
 
