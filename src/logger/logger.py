@@ -3,7 +3,9 @@ import logging
 
 class Logger:
     def __init__(self, output_path) -> None:
-        logging.basicConfig(filename=output_path, level=logging.DEBUG)
+        logging.basicConfig(filename=output_path,
+                            level=logging.DEBUG,
+                            filemode='w')
         self.logger = logging.getLogger(__name__)
 
     def log(self, message: str) -> None:
