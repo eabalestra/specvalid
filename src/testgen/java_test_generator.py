@@ -29,7 +29,10 @@ class JavaTestGenerator:
             if prompt.id is not pid:
                 continue
             response = self.llm_service.execute_prompt(
-                mid, prompt.prompt, prompt.format_instructions)
+                mid,
+                prompt.prompt,
+                prompt.format_instructions
+            )
             if response is not None:
                 combined_responses += response
         return combined_responses
