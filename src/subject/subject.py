@@ -18,11 +18,14 @@ class Subject:
         class_path_src: str,
         spec_file: str,
         method_name: str,
-        java_test_suite: str,
+        java_test_suite: JavaTestSuite,
+        java_test_driver: JavaTestDriver
     ):
         self.class_code = self._load_class_code(class_path_src)
         self.method_code = self._load_method_code(class_path_src, method_name)
-        self.specs = Specs(spec_file)
+        self.specs = Specs(spec_file, class_path_src, method_name)
+        self.test_suite = java_test_suite
+        self.test_driver = java_test_driver
 
     def collect_specs(self) -> set:
         return self.specs.parse_and_collect_specs()
