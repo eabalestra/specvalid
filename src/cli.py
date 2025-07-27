@@ -1,28 +1,23 @@
-import argparse
-
+from argsparser.parser import build_parser
 from core import run_testgen
+from llmservice.llm_service import LLMService
+from prompt.prompt_id import PromptID
 
 
 def main():
-    parser = argparse.ArgumentParser(prog="specvalid")
-    sub = parser.add_subparsers(dest="command", required=True)
-
-    # ./run-automatic-invariant-filtering.sh
-    # QueueAr_makeEmpty DataStructures.QueueAr makeEmpty
-    # -m "Llama323Instruct" -p "General_V1"
-    testgen = sub.add_parser("testgen")
-    testgen.add_argument("target_classpath")
-    testgen.add_argument("target_class")
-    testgen.add_argument("target_class_src")
-    testgen.add_argument("test_suite")
-    testgen.add_argument("method")
-
-    mutgen = sub.add_parser("mutgen")
-
+    parser = build_parser()
     args = parser.parse_args()
 
+    if args.list_llms:
+        llm_service = LLMService()
+        print("Supported LLMs:", llm_service.get_all_models(), sep='\n')
+        return
+    if args.list_prompts:
+        print("Available PromptIDs:", *[p.name for p in PromptID], sep='\n')
+        return
+
     if args.command == "testgen":
-        run_testgen()
-    if args.command == "mutgen":
+        run_testgen(args)
+    elif args.command == "mutgen":
         raise NotImplementedError(
             "Mutgen functionality is not implemented yet.")
