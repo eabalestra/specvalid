@@ -1,10 +1,8 @@
-
-
 import argparse
 
 
 def list_of_strings(arg):
-    return arg.split(',')
+    return arg.split(",")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -15,6 +13,7 @@ def build_parser() -> argparse.ArgumentParser:
     testgen = sub.add_parser("testgen")
     testgen.add_argument("target_class_src")
     testgen.add_argument("test_suite")
+    testgen.add_argument("test_driver")
     testgen.add_argument("assertions_file")
     testgen.add_argument("method")
     testgen.add_argument(
@@ -24,16 +23,16 @@ def build_parser() -> argparse.ArgumentParser:
         dest="models_list",
         default="",
         help="List the LLMs to run.",
-        metavar="MODELS"
+        metavar="MODELS",
     )
     testgen.add_argument(
         "-sw",
-        '--starts-with',
+        "--starts-with",
         type=str,
         dest="models_prefix",
         default=None,
         help="Selects all LLMs starting with the <prefix>.",
-        metavar="PREFIX"
+        metavar="PREFIX",
     )
     testgen.add_argument(
         "-p",
@@ -42,22 +41,22 @@ def build_parser() -> argparse.ArgumentParser:
         dest="prompts_list",
         default="",
         help="List the prompts to use.",
-        metavar="PROMPTS"
+        metavar="PROMPTS",
     )
     testgen.add_argument(
-        '-ll',
-        '--llms',
+        "-ll",
+        "--llms",
         "--llm-list",
         dest="list_llms",
-        action='store_true',
-        help="List the supported LLMs."
+        action="store_true",
+        help="List the supported LLMs.",
     )
     testgen.add_argument(
-        '-pl',
+        "-pl",
         "--prompt-list",
         dest="list_prompts",
-        action='store_true',
-        help="List the available prompts."
+        action="store_true",
+        help="List the available prompts.",
     )
 
     # mutgen command (placeholder)
