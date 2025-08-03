@@ -1,6 +1,6 @@
-
-
+from file_operations.file_ops import FileOperations
 from java_test_driver.java_test_driver import JavaTestDriver
+from java_test_file_updater.java_test_file_updater import JavaTestFileUpdater
 from java_test_suite.java_test_suite import JavaTestSuite
 from llmservice.llm_service import LLMService
 from logger.logger import Logger
@@ -15,9 +15,7 @@ SPECVALD_OUTPUT_DIR = "output"
 
 
 def select_models(
-        llm_service: LLMService,
-        models_list: list[str],
-        models_prefix: str | None
+    llm_service: LLMService, models_list: list[str], models_prefix: str | None
 ):
     # include only supported models
     models = []
@@ -26,7 +24,12 @@ def select_models(
         if len(models) == 0:
             raise ValueError("Invalid models prefix.")
     else:
-        if models_list is None or models_list == "" or models_list == [] or models_list == [""]:
+        if (
+            models_list is None
+            or models_list == ""
+            or models_list == []
+            or models_list == [""]
+        ):
             models = llm_service.get_all_models()
         else:
             all_models = llm_service.get_all_models()
@@ -41,62 +44,103 @@ def select_models(
 def select_prompts(prompts_list):
     # include only supported prompts
     prompt_IDs = []
-    if prompts_list is None or prompts_list == "" or prompts_list == [] or prompts_list == [""]:
+    if (
+        prompts_list is None
+        or prompts_list == ""
+        or prompts_list == []
+        or prompts_list == [""]
+    ):
         prompt_IDs = PromptID.all()
     else:
         for p in prompts_list:
             for p1 in PromptID.all():
-                if p == p1.name or "PromptID."+p == p1.name:
+                if p == p1.name or "PromptID." + p == p1.name:
                     prompt_IDs.append(p1)
     return prompt_IDs
 
 
 def _get_subject_output_dir(java_class_src, method):
     class_name = os.path.basename(java_class_src).replace(".java", "")
-    subject_output_dir = os.path.join(
-        SPECVALD_OUTPUT_DIR, f"{class_name}_{method}")
+    subject_output_dir = os.path.join(SPECVALD_OUTPUT_DIR, f"{class_name}_{method}")
     os.makedirs(subject_output_dir, exist_ok=True)
     return subject_output_dir
 
 
+def _get_subject_output_testgen_dir(subject_output_dir):
+    testgen_dir = os.path.join(subject_output_dir, "test")
+    os.makedirs(testgen_dir, exist_ok=True)
+    return testgen_dir
+
+
 def run_testgen(args):
     try:
+        # Parse arguments
         java_class_src = args.target_class_src
         method = args.method
         java_test_suite = args.test_suite
+        java_test_driver = args.test_driver
         spec_file = args.assertions_file
 
+        # Prepare the output directory for the subject
         subject_output_dir = _get_subject_output_dir(java_class_src, method)
+        subject_output_testgen_dir = _get_subject_output_testgen_dir(subject_output_dir)
 
-        logger = Logger(subject_output_dir + "/testgen.log")
-        timestamp_logger = Logger(
-            subject_output_dir + "/testgen_timestamp.log")
+        # Setup logging
+        logger = Logger(subject_output_testgen_dir + "/testgen.log")
+        timestamp_logger = Logger(subject_output_testgen_dir + "/testgen_timestamp.log")
 
+        # Log the arguments
         logger.log(f"Arguments: {args}")
 
-        generated_test_suite = JavaTestSuite(java_test_suite)
+        # Setup the Java test suite and driver files
+        generated_test_suite = JavaTestSuite(java_class_src, java_test_suite)
         generated_test_driver = JavaTestDriver()
+
         subject = Subject(
             java_class_src,
             spec_file,
             method,
             generated_test_suite,
-            generated_test_driver
+            generated_test_driver,
         )
         java_test_generator = JavaTestGenerator(subject)
 
-        service = JavaTestGenService(
-            subject,
-            java_test_generator,
-            logger,
-            timestamp_logger
+        # Service for test generation
+        testgen_service = JavaTestGenService(
+            subject, java_test_generator, logger, timestamp_logger
         )
-        models = select_models(java_test_generator.llm_service,
-                               args.models_list,
-                               args.models_prefix)
+
+        # Select models and prompts
+        models = select_models(
+            java_test_generator.llm_service, args.models_list, args.models_prefix
+        )
         prompt_IDs = select_prompts(args.prompts_list)
 
-        service.run(prompts=prompt_IDs, models=models)
+        # Run test generation using LLM's
+        testgen_service.run(prompts=prompt_IDs, models=models)
+        subject.test_suite.write_test_suite()
+
+        # TODO:
+        # subject.test_suite.tests = JavaTestSuite.extract_tests_from_file("suite.java")
+
+        # Fix the generated test suite
+        repaired_tests = subject.test_suite.repair_java_tests()
+        repaired_tests_summary = "\n".join(repaired_tests)
+        FileOperations.write_file(
+            subject_output_testgen_dir + "/repaired_tests.java", repaired_tests_summary
+        )
+
+        # run discard uncompilable test files
+
+        # run append test files to the destination
+
+        # # Prepare the augmented test files (old tests + generated tests)
+        # new_test_suite_path = JavaTestFileUpdater.prepare_test_file(
+        #     java_test_suite, "Augmented", is_driver=False
+        # )
+        # new_test_driver_path = JavaTestFileUpdater.prepare_test_file(
+        #     java_test_driver, "Augmented", is_driver=True
+        # )
     except ValueError as e:
         print(f"Error: {e}")
         return
