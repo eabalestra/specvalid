@@ -184,7 +184,7 @@ class LLMService:
         # avoid calling models currently cold/unsupported in HF or OPENAI
         # if model_id not in self.cold_models and model_id not in self.unsupported_models:
         # print("Running Model:{}".format(model_id))
-        logging.info(f"Running Model: {model_id}")
+        # logging.info(f"Running Model: {model_id}")
         if model_id == "GPT35TurboInstruct":
             response = self.gpt_old_execute_prompt(
                 model_id, prompt, format_instructions
