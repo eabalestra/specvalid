@@ -1,4 +1,5 @@
 import time
+from typing import List
 
 from java_code_extractor.java_code_extractor import JavaCodeExtractor
 from subject.subject import Subject
@@ -7,7 +8,6 @@ from logger.logger import Logger
 
 
 class JavaTestGenService:
-
     def __init__(
         self,
         subject: Subject,
@@ -41,12 +41,13 @@ class JavaTestGenService:
             elapsed_time = time.time() - start_time
             total_time += elapsed_time
 
+            generated_tests = self.process_llm_test_response(llm_response)
+
+            for test in generated_tests:
+                self.subject.test_suite.add_test(test)
+                self.logger.log(f"Generated test: \n{test}")
+
             self.logger.log(f"LLM response: {llm_response}")
-
-            test_code = self.process_llm_test_response(llm_response)
-            self.subject.test_suite.add_test(test_code)
-
-            self.logger.log(f"Generated test: \n{test_code}")
             self.timestamp_logger.log(
                 f"Test generation for assertion '{assertion}' took "
                 f"{elapsed_time:.2f} seconds"
@@ -56,7 +57,10 @@ class JavaTestGenService:
         )
         self.logger.log(f"Finished test generation for {self.subject}.")
 
-    def process_llm_test_response(self, llm_response: str) -> str:
-        test_code = self.code_extractor.extract_test_code_from_response(llm_response)
-        test_code = self.subject.test_suite.remove_assertions_from_test(test_code)
-        return test_code
+    def process_llm_test_response(self, llm_response: str) -> List[str]:
+        parsed_test_cases = self.code_extractor.extract_tests_from_response(
+            llm_response
+        )
+        for test in parsed_test_cases:
+            test = self.subject.test_suite.remove_assertions_from_test(test)
+        return parsed_test_cases
