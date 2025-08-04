@@ -6,8 +6,9 @@ class JavaCodeExtractor:
     def __init__(self) -> None:
         pass
 
-    def extract_test_code_from_response(self, llm_response: str) -> str:
-        return self.extract_test_from_string(llm_response)
+    def extract_tests_from_response(self, llm_response: str) -> List[str]:
+        code = self.extract_test_from_string(llm_response)
+        return self.parse_test_from_string(code)
 
     def extract_test_with_comments_from_string(self, text: str) -> str:
         lines = text.split("\n")
@@ -69,9 +70,6 @@ class JavaCodeExtractor:
         return comments, extracted_test
 
     def parse_test_from_string(self, content: str) -> List[str]:
-        """
-        Parse test methods from string content.
-        """
         brace_count = 0
         test_methods = []
         extracted_test = []

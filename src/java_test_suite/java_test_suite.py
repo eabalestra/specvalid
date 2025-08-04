@@ -7,32 +7,49 @@ from java_test_fixer.java_test_fixer import JavaTestFixer
 
 class JavaTestSuite:
 
-    def __init__(self, path_to_class: str, path_to_suite: str):
+    def __init__(self, path_to_class: str, path_to_suite: str, subject_id: str):
+        self.subject_id = subject_id
         self.path_to_class = path_to_class
         self.path_to_suite = path_to_suite
         self.java_test_fixer = JavaTestFixer(path_to_class, path_to_suite)
-        self.tests = []
+        self.test_suite = []
 
     def add_test(self, test_code: str):
-        self.tests.append(test_code)
+        self.test_suite.append(test_code)
 
     def remove_assertions_from_test(self, test_code: str) -> str:
-        assertion_regex = re.compile(
-            r"^\s*(?:[a-zA-Z0-9_.]+\.)?(?:assert\w*\b.*?;|fail\w*\b.*?;).*$",
-            re.MULTILINE | re.IGNORECASE,
-        )
-        return re.sub(assertion_regex, "", test_code)
+        lines = test_code.split("\n")
+        result_lines = []
+        for line in lines:
+            assertion_patterns = [
+                # JUnit assertions: assertTrue, assertFalse, assertEquals, etc.
+                r"^\s*(?:[a-zA-Z0-9_.]+\.)?assert\w*\s*\(",
+                # Java native assert statements with parentheses
+                r"^\s*assert\s*\(",
+                # Java native assert statements with space (no parentheses)
+                r"^\s*assert\s+",
+                # fail statements with parentheses
+                r"^\s*(?:[a-zA-Z0-9_.]+\.)?fail\w*\s*\(",
+                # fail statements with space
+                r"^\s*(?:[a-zA-Z0-9_.]+\.)?fail\s+",
+            ]
+            is_assertion = any(
+                re.match(pattern, line, re.IGNORECASE) for pattern in assertion_patterns
+            )
+            if not is_assertion:
+                result_lines.append(line)
+        return "\n".join(result_lines)
 
     def repair_java_tests(self) -> list[str]:
         fixed_tests = []
-        for test in self.tests:
+        for test in self.test_suite:
             fixed_test = self.java_test_fixer.repair_java_test(test)
             fixed_tests.append(fixed_test)
         return self._rename_test_methods(fixed_tests, "llmTest")
 
-    def write_test_suite(self):
-        joined_test_cases = "\n\n".join(self.tests)
-        FileOperations.write_file("suite.java", joined_test_cases)
+    def write_test_suite(self, output_file: str):
+        joined_test_cases = "\n\n".join(self.test_suite)
+        FileOperations.write_file(output_file, joined_test_cases)
 
     def _rename_test_methods(self, test_methods: List[str], new_name: str) -> List[str]:
         name_pattern = r"public void \w+\(\)"

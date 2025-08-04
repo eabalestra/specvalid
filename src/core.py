@@ -1,6 +1,5 @@
 from file_operations.file_ops import FileOperations
 from java_test_driver.java_test_driver import JavaTestDriver
-from java_test_file_updater.java_test_file_updater import JavaTestFileUpdater
 from java_test_suite.java_test_suite import JavaTestSuite
 from llmservice.llm_service import LLMService
 from logger.logger import Logger
@@ -59,14 +58,13 @@ def select_prompts(prompts_list):
     return prompt_IDs
 
 
-def _get_subject_output_dir(java_class_src, method):
-    class_name = os.path.basename(java_class_src).replace(".java", "")
-    subject_output_dir = os.path.join(SPECVALD_OUTPUT_DIR, f"{class_name}_{method}")
+def _create_subject_output_directory(subject_id):
+    subject_output_dir = os.path.join(SPECVALD_OUTPUT_DIR, subject_id)
     os.makedirs(subject_output_dir, exist_ok=True)
     return subject_output_dir
 
 
-def _get_subject_output_testgen_dir(subject_output_dir):
+def _create_testgen_directory(subject_output_dir):
     testgen_dir = os.path.join(subject_output_dir, "test")
     os.makedirs(testgen_dir, exist_ok=True)
     return testgen_dir
@@ -81,9 +79,12 @@ def run_testgen(args):
         java_test_driver = args.test_driver
         spec_file = args.assertions_file
 
-        # Prepare the output directory for the subject
-        subject_output_dir = _get_subject_output_dir(java_class_src, method)
-        subject_output_testgen_dir = _get_subject_output_testgen_dir(subject_output_dir)
+        class_name = os.path.basename(java_class_src).replace(".java", "")
+        subject_id = f"{class_name}_{method}"
+
+        # Set up output directory for the subject
+        subject_output_dir = _create_subject_output_directory(subject_id)
+        subject_output_testgen_dir = _create_testgen_directory(subject_output_dir)
 
         # Setup logging
         logger = Logger(subject_output_testgen_dir + "/testgen.log")
@@ -93,7 +94,9 @@ def run_testgen(args):
         logger.log(f"Arguments: {args}")
 
         # Setup the Java test suite and driver files
-        generated_test_suite = JavaTestSuite(java_class_src, java_test_suite)
+        generated_test_suite = JavaTestSuite(
+            java_class_src, java_test_suite, subject_id
+        )
         generated_test_driver = JavaTestDriver()
 
         subject = Subject(
@@ -118,29 +121,32 @@ def run_testgen(args):
 
         # Run test generation using LLM's
         testgen_service.run(prompts=prompt_IDs, models=models)
-        subject.test_suite.write_test_suite()
+        subject.test_suite.write_test_suite(
+            os.path.join(subject_output_testgen_dir, f"{subject_id}LlmTest.java")
+        )
 
         # TODO:
-        # subject.test_suite.tests = JavaTestSuite.extract_tests_from_file("suite.java")
+        # subject.test_suite.test_suite = JavaTestSuite.extract_tests_from_file("tests/suite_for_testing.java")
 
         # Fix the generated test suite
         repaired_tests = subject.test_suite.repair_java_tests()
-        repaired_tests_summary = "\n".join(repaired_tests)
+        fixed_tests_summary = "\n".join(repaired_tests)
         FileOperations.write_file(
-            subject_output_testgen_dir + "/repaired_tests.java", repaired_tests_summary
+            os.path.join(subject_output_testgen_dir, f"{subject_id}LlmFixedTest.java"),
+            fixed_tests_summary,
         )
 
-        # run discard uncompilable test files
-
-        # run append test files to the destination
-
-        # # Prepare the augmented test files (old tests + generated tests)
+        # Prepare the augmented test files (old tests + generated tests)
         # new_test_suite_path = JavaTestFileUpdater.prepare_test_file(
         #     java_test_suite, "Augmented", is_driver=False
         # )
         # new_test_driver_path = JavaTestFileUpdater.prepare_test_file(
         #     java_test_driver, "Augmented", is_driver=True
         # )
+
+        # TODO:
+        # run discard uncompilable test files
+        # run append test files to the destination
     except ValueError as e:
         print(f"Error: {e}")
         return
