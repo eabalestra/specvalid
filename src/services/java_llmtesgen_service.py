@@ -7,7 +7,7 @@ from testgen.java_test_generator import JavaTestGenerator
 from logger.logger import Logger
 
 
-class JavaTestGenService:
+class JavaLLMTestGenService:
     def __init__(
         self,
         subject: Subject,
