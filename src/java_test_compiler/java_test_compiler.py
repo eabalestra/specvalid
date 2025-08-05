@@ -1,5 +1,4 @@
 from pathlib import Path
-import tempfile
 
 from java_test_compiler.java_build_tool_compiler import JavaBuildToolCompiler
 from java_test_compiler.javac_compiler import JavacCompiler
