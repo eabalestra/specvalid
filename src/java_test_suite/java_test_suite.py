@@ -12,10 +12,10 @@ class JavaTestSuite:
         self.path_to_class = path_to_class
         self.path_to_suite = path_to_suite
         self.java_test_fixer = JavaTestFixer(path_to_class, path_to_suite)
-        self.test_suite = []
+        self.test_list = []
 
     def add_test(self, test_code: str):
-        self.test_suite.append(test_code)
+        self.test_list.append(test_code)
 
     def remove_assertions_from_test(self, test_code: str) -> str:
         lines = test_code.split("\n")
@@ -42,13 +42,14 @@ class JavaTestSuite:
 
     def repair_java_tests(self) -> list[str]:
         fixed_tests = []
-        for test in self.test_suite:
-            fixed_test = self.java_test_fixer.repair_java_test(test)
+        for test in self.test_list:
+            fixed_test = self.remove_assertions_from_test(test)
+            fixed_test = self.java_test_fixer.repair_java_test(fixed_test)
             fixed_tests.append(fixed_test)
         return self._rename_test_methods(fixed_tests, "llmTest")
 
     def write_test_suite(self, output_file: str):
-        joined_test_cases = "\n\n".join(self.test_suite)
+        joined_test_cases = "\n\n".join(self.test_list)
         FileOperations.write_file(output_file, joined_test_cases)
 
     def _rename_test_methods(self, test_methods: List[str], new_name: str) -> List[str]:
