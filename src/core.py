@@ -1,10 +1,11 @@
 from file_operations.file_ops import FileOperations
+from java_test_compiler.java_test_compiler import JavaTestCompiler
 from java_test_driver.java_test_driver import JavaTestDriver
 from java_test_suite.java_test_suite import JavaTestSuite
 from llmservice.llm_service import LLMService
 from logger.logger import Logger
 from prompt.prompt_id import PromptID
-from services.java_tesgen_service import JavaTestGenService
+from services.java_llmtesgen_service import JavaLLMTestGenService
 from subject.subject import Subject
 from testgen.java_test_generator import JavaTestGenerator
 
@@ -109,7 +110,7 @@ def run_testgen(args):
         java_test_generator = JavaTestGenerator(subject)
 
         # Service for test generation
-        testgen_service = JavaTestGenService(
+        testgen_service = JavaLLMTestGenService(
             subject, java_test_generator, logger, timestamp_logger
         )
 
@@ -125,12 +126,14 @@ def run_testgen(args):
             os.path.join(subject_output_testgen_dir, f"{subject_id}LlmTest.java")
         )
 
-        # TODO:
-        # subject.test_suite.test_suite = JavaTestSuite.extract_tests_from_file("tests/suite_for_testing.java")
+        # TODO: uncomment this for testing
+        # subject.test_suite.test_suite = JavaTestSuite.extract_tests_from_file(
+        #     "tests/suite_for_testing.java"
+        # )
 
         # Fix the generated test suite
-        repaired_tests = subject.test_suite.repair_java_tests()
-        fixed_tests_summary = "\n".join(repaired_tests)
+        fixed_test_cases = subject.test_suite.repair_java_tests()
+        fixed_tests_summary = "\n".join(fixed_test_cases)
         FileOperations.write_file(
             os.path.join(subject_output_testgen_dir, f"{subject_id}LlmFixedTest.java"),
             fixed_tests_summary,
@@ -144,8 +147,10 @@ def run_testgen(args):
         #     java_test_driver, "Augmented", is_driver=True
         # )
 
-        # TODO:
-        # run discard uncompilable test files
+        # TODO: run discard uncompilable test files
+        # compiler = JavaTestCompiler(java_class_src)
+        # compiler.compile(fixed_test_cases[0], with_tool=True)
+
         # run append test files to the destination
     except ValueError as e:
         print(f"Error: {e}")
