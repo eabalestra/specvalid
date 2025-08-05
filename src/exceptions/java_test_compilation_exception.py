@@ -1,0 +1,2 @@
+class JavaTestCompilationException(Exception):
+    pass
