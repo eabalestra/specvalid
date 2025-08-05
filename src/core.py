@@ -1,4 +1,5 @@
 from file_operations.file_ops import FileOperations
+from java_test_compiler.java_build_tool_compiler import JavaTestCompilationException
 from java_test_compiler.java_test_compiler import JavaTestCompiler
 from java_test_driver.java_test_driver import JavaTestDriver
 from java_test_suite.java_test_suite import JavaTestSuite
@@ -127,9 +128,13 @@ def run_testgen(args):
         )
 
         # TODO: uncomment this for testing
-        # subject.test_suite.test_suite = JavaTestSuite.extract_tests_from_file(
+        # subject.test_suite.test_list = JavaTestSuite.extract_tests_from_file(
         #     "tests/suite_for_testing.java"
         # )
+
+        logger.log(
+            f"Processing {len(subject.test_suite.test_list)} tests for {subject_id}."
+        )
 
         # Fix the generated test suite
         fixed_test_cases = subject.test_suite.repair_java_tests()
@@ -139,20 +144,26 @@ def run_testgen(args):
             fixed_tests_summary,
         )
 
-        # Prepare the augmented test files (old tests + generated tests)
+        compiler = JavaTestCompiler(java_class_src)
+        compilable_tests = []
+        for test in fixed_test_cases:
+            try:
+                compiler.compile(test, with_tool=True)
+                compilable_tests.append(test)
+            except JavaTestCompilationException as e:
+                logger.log_warning(f"Test discarded - Compilation error:\n{e}")
+
+        logger.log(f"Compiled {len(compilable_tests)} tests successfully.")
+
+        # TODO: run append test files to the destination
+        # # Prepare the augmented test files (old tests + generated tests)
         # new_test_suite_path = JavaTestFileUpdater.prepare_test_file(
         #     java_test_suite, "Augmented", is_driver=False
         # )
         # new_test_driver_path = JavaTestFileUpdater.prepare_test_file(
         #     java_test_driver, "Augmented", is_driver=True
         # )
-
-        # TODO: run discard uncompilable test files
-        # compiler = JavaTestCompiler(java_class_src)
-        # compiler.compile(fixed_test_cases[0], with_tool=True)
-
-        # run append test files to the destination
-    except ValueError as e:
+    except Exception as e:
         print(f"Error: {e}")
         return
     print("> Done")
