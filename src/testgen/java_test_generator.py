@@ -1,19 +1,12 @@
-from java_compiler.java_compiler import JavaCompiler
 from llmservice.llm_service import LLMService
-
 from prompt.prompt import Prompt
 from prompt.prompt_id import PromptID
-from specs.specs import Specs
 from subject.subject import Subject
 
 
 class JavaTestGenerator:
-
     def __init__(self, subject: Subject):
         self.llm_service = LLMService()
-
-        # It could potentially be constructed from the subject
-        self.java_compiler = JavaCompiler()
         self.subject = subject
         self.prompts = []
         self.llm_response = ""
