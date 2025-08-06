@@ -2,6 +2,7 @@ from file_operations.file_ops import FileOperations
 from java_test_compiler.java_build_tool_compiler import JavaTestCompilationException
 from java_test_compiler.java_test_compiler import JavaTestCompiler
 from java_test_driver.java_test_driver import JavaTestDriver
+from java_test_file_updater.java_test_file_updater import JavaTestFileUpdater
 from java_test_suite.java_test_suite import JavaTestSuite
 from llmservice.llm_service import LLMService
 from logger.logger import Logger
@@ -155,11 +156,14 @@ def run_testgen(args):
 
         logger.log(f"Compiled {len(compilable_tests)} tests successfully.")
 
-        # TODO: run append test files to the destination
-        # # Prepare the augmented test files (old tests + generated tests)
-        # new_test_suite_path = JavaTestFileUpdater.prepare_test_file(
-        #     java_test_suite, "Augmented", is_driver=False
-        # )
+        # Update the test suite with compilable tests (old tests + new tests)
+        new_test_suite_path = JavaTestFileUpdater.prepare_test_file(
+            java_test_suite, "Augmented", is_driver=False
+        )
+        new_test_suite = JavaTestSuite(java_class_src, new_test_suite_path, subject_id)
+        new_test_suite.insert_tests_into_suite(new_test_suite_path, compilable_tests)
+
+        # TODO: run append new compilable tests to the test driver
         # new_test_driver_path = JavaTestFileUpdater.prepare_test_file(
         #     java_test_driver, "Augmented", is_driver=True
         # )
