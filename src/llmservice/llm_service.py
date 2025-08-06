@@ -223,7 +223,7 @@ class LLMService:
                 return None
             else:
                 # parsed_mc_question = parser.invoke(gpt_response.content)
-                return gpt_response  # parsed_mc_question
+                return gpt_response.content  # Return content string, not message object
         except ValidationError as err:
             print("gpt_execute_prompt:ValidationError: ", err)
             return None
