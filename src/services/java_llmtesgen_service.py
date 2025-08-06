@@ -70,10 +70,12 @@ class JavaLLMTestGenService:
             test_suite = "\n".join(test_list)
             try:
                 self.compiler.compile(test=test_suite, with_tool=True)
-                print(f"Compilation successful on attempt {attempt}.")
+                self.logger.log(f"Compilation successful on attempt {attempt}.")
                 break
             except JavaTestCompilationException as e:
-                print(f"Compilation failed on attempt {attempt}: {e}")
+                self.logger.log_warning(
+                    f"Compilation failed on attempt {attempt}: \n{e}"
+                )
                 llm_response = self.test_generator.generate_test(
                     class_code=self.subject.class_code,
                     method_code=self.subject.method_code,
