@@ -1,4 +1,5 @@
 from file_operations.file_ops import FileOperations
+from java_test_appender.java_test_appender import JavaTestApender
 from java_test_compiler.java_build_tool_compiler import JavaTestCompilationException
 from java_test_compiler.java_test_compiler import JavaTestCompiler
 from java_test_driver.java_test_driver import JavaTestDriver
@@ -139,35 +140,47 @@ def run_testgen(args):
 
         # Fix the generated test suite
         fixed_test_cases = subject.test_suite.repair_java_tests()
-        fixed_tests_summary = "\n".join(fixed_test_cases)
+        fixed_tests_summary = "\n\n".join(fixed_test_cases)
         FileOperations.write_file(
             os.path.join(subject_output_testgen_dir, f"{subject_id}LlmFixedTest.java"),
             fixed_tests_summary,
         )
 
+        # Discard tests that cannot be compiled
         compiler = JavaTestCompiler(java_class_src)
-        compilable_tests = []
+        compiled_test_cases = []
         for test in fixed_test_cases:
             try:
                 compiler.compile(test, with_tool=True)
-                compilable_tests.append(test)
+                compiled_test_cases.append(test)
             except JavaTestCompilationException as e:
                 logger.log_warning(f"Test discarded - Compilation error:\n{e}")
 
-        logger.log(f"Compiled {len(compilable_tests)} tests successfully.")
+        compiled_tests_summary = "\n\n".join(compiled_test_cases)
+        FileOperations.write_file(
+            os.path.join(
+                subject_output_testgen_dir, f"{subject_id}LlmCompilableTest.java"
+            ),
+            compiled_tests_summary,
+        )
 
-        # Update the test suite with compilable tests (old tests + new tests)
+        logger.log(f"Compiled {len(compiled_test_cases)} tests successfully.")
+
+        # Set up the suite and driver for append the generated tests
         new_test_suite_path = JavaTestFileUpdater.prepare_test_file(
             java_test_suite, "Augmented", is_driver=False
         )
-        new_test_suite = JavaTestSuite(java_class_src, new_test_suite_path, subject_id)
-        new_test_suite.insert_tests_into_suite(new_test_suite_path, compilable_tests)
+        new_test_driver_path = JavaTestFileUpdater.prepare_test_file(
+            java_test_driver, "Augmented", is_driver=True
+        )
 
-        # TODO: run append new compilable tests to the test driver
-        # new_test_driver_path = JavaTestFileUpdater.prepare_test_file(
-        #     java_test_driver, "Augmented", is_driver=True
-        # )
+        # Append the tests to the suite and driver
+        appender = JavaTestApender()
+        appender.insert_tests_into_suite(new_test_suite_path, compiled_test_cases)
+        appender.insert_tests_into_driver(new_test_driver_path, compiled_test_cases)
+
+        logger.log("> Done ✅")
     except Exception as e:
         print(f"Error: {e}")
         return
-    print("> Done")
+    print("> Done ✅")
