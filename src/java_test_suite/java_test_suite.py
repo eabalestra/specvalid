@@ -52,18 +52,6 @@ class JavaTestSuite:
         joined_test_cases = "\n\n".join(self.test_list)
         FileOperations.write_file(output_file, joined_test_cases)
 
-    def insert_tests_into_suite(
-        self, existing_test_suite_path: str, test_cases: List[str]
-    ):
-        existing_suite = FileOperations.read_file(existing_test_suite_path)
-        new_test_suite = existing_suite[::-1].replace(
-            "}", "\n    {GENERATED_TESTS}\n\n}"[::-1], 1
-        )[::-1]
-        new_test_suite = new_test_suite.replace(
-            "{GENERATED_TESTS}", "\n    ".join(test_cases)
-        )
-        FileOperations.write_file(existing_test_suite_path, new_test_suite)
-
     def _rename_test_methods(self, test_methods: List[str], new_name: str) -> List[str]:
         name_pattern = r"public void \w+\(\)"
         return [
