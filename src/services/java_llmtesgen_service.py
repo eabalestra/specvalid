@@ -27,7 +27,7 @@ class JavaLLMTestGenService:
         self.timestamp_logger = timestamp_logger
         self.assertions_from_specfuzzer = self.subject.collect_specs()
         self.code_extractor = JavaCodeExtractor()
-        self.compiler = JavaTestCompiler()
+        self.compiler = JavaTestCompiler(subject.class_path_src)
 
     def run(self, prompts: list, models: list):
         self.logger.log(f"Starting test generation for {self.subject}...")
