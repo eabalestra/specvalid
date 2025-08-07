@@ -19,10 +19,14 @@ source .venv/bin/activate
 java_class_src=/home/agustin/university/llm-based-assertion-confirmation/GAssert/subjects/QueueAr_makeEmpty/src/main/java/DataStructures/QueueAr.java
 java_test_suite=/home/agustin/university/llm-based-assertion-confirmation/GAssert/subjects/QueueAr_makeEmpty/src/test/java/testers/QueueArTester0.java
 java_test_driver=/home/agustin/university/llm-based-assertion-confirmation/GAssert/subjects/QueueAr_makeEmpty/src/test/java/testers/QueueArTesterDriver.java
-assertions_file=/home/agustin/university/llm-based-assertion-confirmation/specfuzzer-subject-results/QueueAr_makeEmpty/output/QueueAr-makeEmpty-specfuzzer-1-buckets.assertions
+bucket_assertions_file=/home/agustin/university/llm-based-assertion-confirmation/specfuzzer-subject-results/QueueAr_makeEmpty/output/QueueAr-makeEmpty-specfuzzer-1-buckets.assertions
 method=makeEmpty
 models="L_Mistral7B03Instruct_Q4,L_Gemma31"
 prompts="General_V1"
 
+# For second validation
+specfuzzer_invs_file=/home/agustin/university/llm-based-assertion-confirmation/specfuzzer-subject-results/QueueAr_makeEmpty/output/QueueAr-makeEmpty-specfuzzer-1.inv.gz
+specfuzzer_assertions_file=/home/agustin/university/llm-based-assertion-confirmation/specfuzzer-subject-results/QueueAr_makeEmpty/output/QueueAr-makeEmpty-specfuzzer-1.assertions
+
 echo "> Running specvalid"
-specvalid testgen "$java_class_src" "$java_test_suite" "$java_test_driver" "$assertions_file" "$method" -m "$models" -p "$prompts"
+specvalid testgen "$java_class_src" "$java_test_suite" "$java_test_driver" "$bucket_assertions_file" "$method" -m "$models" -p "$prompts" -sf "$specfuzzer_invs_file" -sa "$specfuzzer_assertions_file"
