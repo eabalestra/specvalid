@@ -26,8 +26,28 @@ class Daikon:
                 "--output-dir",
                 self.output_dir,
             ]
-            subprocess.run(cmd)
+            subprocess.run(cmd, check=True)
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"Error running DynComp: {e}.")
-        
-    
+
+    def run_chicory_dtrace_generation(self):
+        objs_file = f"{self.output_dir}/{self.test_driver}-objects.xml"
+        cmp_file = f"{self.output_dir}/{self.test_driver}.decls-DynComp"
+        try:
+            cmd = [
+                "java",
+                "-cp",
+                self.cp_for_daikon,
+                "daikon.Chicory",
+                "--output-dir",
+                self.output_dir,
+                "--comparability-file",
+                cmp_file,
+                "--ppt-omit-pattern",
+                f"{self.test_driver}.*",
+                self.test_driver_fq_name,
+                objs_file,
+            ]
+            subprocess.run(cmd, check=True)
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(f"Error running Chicory DTrace generation: {e}")

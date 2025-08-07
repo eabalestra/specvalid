@@ -234,7 +234,11 @@ class Core:
         )
 
         logger.log(
-            f"> Run Dynamic Comparability Analysis from driver: \
-                {augmented_test_driver_name}"
+            f"> Run Dynamic Comparability Analysis from driver: {augmented_test_driver_name}"
         )
         daikon.run_dyn_comp()
+
+        logger.log(
+            f"> Run Chicory DTrace generation from driver: {augmented_test_driver_name}"
+        )
+        daikon.run_chicory_dtrace_generation()
