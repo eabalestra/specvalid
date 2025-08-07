@@ -11,6 +11,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     # testgen command
     testgen = sub.add_parser("testgen")
+    testgen.add_argument(
+        "--no-invs-filtering",
+        dest="no_invs_filtering",
+        action="store_true",
+        help="Skip the Daikon invariants filtering step.",
+        required=False,
+    )
     testgen.add_argument("target_class_src")
     testgen.add_argument("test_suite")
     testgen.add_argument("test_driver")
@@ -58,8 +65,21 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="List the available prompts.",
     )
+    testgen.add_argument(
+        "-sf",
+        "--specfuzzer-invs",
+        dest="specfuzzer_invs_file",
+        help="Path to the specfuzzer <file>.inv.gz file. ",
+        required=False,
+    )
+    testgen.add_argument(
+        "-sa",
+        "--specfuzzer-assertions",
+        dest="specfuzzer_assertions_file",
+        help="Path to the specfuzzer <file>.assertions file. ",
+        required=False,
+    )
 
     # mutgen command (placeholder)
     sub.add_parser("mutgen")
-
     return parser

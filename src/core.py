@@ -179,8 +179,13 @@ def run_testgen(args):
         appender.insert_tests_into_suite(new_test_suite_path, compiled_test_cases)
         appender.insert_tests_into_driver(new_test_driver_path, compiled_test_cases)
 
-        logger.log("> Done ✅")
+        logger.log("> Test generation completed successfully.")
     except Exception as e:
         print(f"Error: {e}")
         return
-    print("> Done ✅")
+
+
+def run_invariant_filtering(args):
+    raise NotImplementedError(
+        "Dynamic invariant filtering functionality is not implemented yet."
+    )
