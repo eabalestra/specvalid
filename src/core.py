@@ -68,10 +68,10 @@ def _create_subject_output_directory(subject_id):
     return subject_output_dir
 
 
-def _create_testgen_directory(subject_output_dir):
-    testgen_dir = os.path.join(subject_output_dir, "test")
-    os.makedirs(testgen_dir, exist_ok=True)
-    return testgen_dir
+def _create_subdirectory(subject_output_dir, subdir_name: str):
+    subdir = os.path.join(subject_output_dir, subdir_name)
+    os.makedirs(subdir, exist_ok=True)
+    return subdir
 
 
 def run_testgen(args):
@@ -88,13 +88,14 @@ def run_testgen(args):
 
         # Set up output directory for the subject
         subject_output_dir = _create_subject_output_directory(subject_id)
-        subject_output_testgen_dir = _create_testgen_directory(subject_output_dir)
+        subject_output_testgen_dir = _create_subdirectory(subject_output_dir, "test")
 
         # Setup logging
         logger = Logger(subject_output_testgen_dir + "/testgen.log")
         timestamp_logger = Logger(subject_output_testgen_dir + "/testgen_timestamp.log")
 
         # Log the arguments
+        logger.log(f"Running test generation for {subject_id}.")
         logger.log(f"Arguments: {args}")
 
         # Setup the Java test suite and driver files
@@ -124,15 +125,15 @@ def run_testgen(args):
         prompt_IDs = select_prompts(args.prompts_list)
 
         # Run test generation using LLM's
-        testgen_service.run(prompts=prompt_IDs, models=models)
-        subject.test_suite.write_test_suite(
-            os.path.join(subject_output_testgen_dir, f"{subject_id}LlmTest.java")
-        )
+        # testgen_service.run(prompts=prompt_IDs, models=models)
+        # subject.test_suite.write_test_suite(
+        #     os.path.join(subject_output_testgen_dir, f"{subject_id}LlmTest.java")
+        # )
 
         # TODO: uncomment this for testing
-        # subject.test_suite.test_list = JavaTestSuite.extract_tests_from_file(
-        #     "tests/suite_for_testing.java"
-        # )
+        subject.test_suite.test_list = JavaTestSuite.extract_tests_from_file(
+            "tests/suite_for_testing.java"
+        )
 
         logger.log(
             f"Processing {len(subject.test_suite.test_list)} tests for {subject_id}."
@@ -185,7 +186,31 @@ def run_testgen(args):
         return
 
 
-def run_invariant_filtering(args):
-    raise NotImplementedError(
-        "Dynamic invariant filtering functionality is not implemented yet."
-    )
+class Core:
+    def __init__(self, args) -> None:
+        self.args = args
+        self.compiler = JavaTestCompiler(args.target_class_src)
+
+    def run_invariant_filter(self):
+        # Parse arguments
+        java_class_src = self.args.target_class_src
+        method = self.args.method
+
+        class_name = os.path.basename(java_class_src).replace(".java", "")
+        subject_id = f"{class_name}_{method}"
+
+        # Set up output directory for the subject
+        subject_output_dir = _create_subject_output_directory(subject_id)
+        subject_daikon_output_dir = _create_subdirectory(subject_output_dir, "daikon")
+        subject_specs_output_dir = _create_subdirectory(subject_output_dir, "specs")
+
+        # Setup logging
+        logger = Logger(subject_daikon_output_dir + "/invfilter.log")
+
+        logger.log(f"Running dynamic invariant filtering for {subject_id}.")
+        logger.log(f"Arguments: {self.args}")
+
+        self.compiler.compile_project()
+        logger.log("Project compiled successfully.")
+
+        # daikon = Daikon()

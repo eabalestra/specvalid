@@ -1,5 +1,5 @@
 from argsparser.parser import build_parser
-from core import run_invariant_filtering, run_testgen
+from core import Core, run_testgen
 from llmservice.llm_service import LLMService
 from prompt.prompt_id import PromptID
 
@@ -28,13 +28,14 @@ def main():
         )
         return
 
+    core = Core(args)
     if args.command == "testgen":
         run_testgen(args)
         if args.no_invs_filtering:
             print("> Second validation skipped due to --no-invs-filtering flag")
         else:
             print("> Running filtering")
-            run_invariant_filtering(args)
+            core.run_invariant_filter()
     elif args.command == "mutgen":
         raise NotImplementedError("Mutgen functionality is not implemented yet.")
 
