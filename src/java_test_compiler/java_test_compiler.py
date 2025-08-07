@@ -1,4 +1,5 @@
 from pathlib import Path
+import subprocess
 
 from java_test_compiler.java_build_tool_compiler import JavaBuildToolCompiler
 from java_test_compiler.javac_compiler import JavacCompiler
@@ -13,6 +14,18 @@ class JavaTestCompiler:
         if with_tool:
             return self._compile_test_with_build_tool(test)
         return self._compile_test_with_javac(test)
+
+    def compile_project(self) -> None:
+        try:
+            subprocess.run(
+                ["./gradlew", "build"],
+                cwd=self.project_root,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+        except subprocess.CalledProcessError as e:
+            raise Exception(f"Failed to compile project with Gradle: {e.stderr}")
 
     def _find_project_root(self) -> Path:
         current = self.class_path
