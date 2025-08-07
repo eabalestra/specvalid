@@ -126,15 +126,15 @@ def run_testgen(args):
         prompt_IDs = select_prompts(args.prompts_list)
 
         # Run test generation using LLM's
-        # testgen_service.run(prompts=prompt_IDs, models=models)
-        # subject.test_suite.write_test_suite(
-        #     os.path.join(subject_output_testgen_dir, f"{subject_id}LlmTest.java")
-        # )
+        testgen_service.run(prompts=prompt_IDs, models=models)
+        subject.test_suite.write_test_suite(
+            os.path.join(subject_output_testgen_dir, f"{subject_id}LlmTest.java")
+        )
 
         # TODO: uncomment this for testing
-        subject.test_suite.test_list = JavaTestSuite.extract_tests_from_file(
-            "tests/suite_for_testing.java"
-        )
+        # subject.test_suite.test_list = JavaTestSuite.extract_tests_from_file(
+        #     "tests/suite_for_testing.java"
+        # )
 
         logger.log(
             f"Processing {len(subject.test_suite.test_list)} tests for {subject_id}."
@@ -234,7 +234,8 @@ class Core:
         )
 
         logger.log(
-            f"> Run Dynamic Comparability Analysis from driver: {augmented_test_driver_name}"
+            f"> Run Dynamic Comparability Analysis from driver: "
+            f"{augmented_test_driver_name}"
         )
         daikon.run_dyn_comp()
 
@@ -242,3 +243,8 @@ class Core:
             f"> Run Chicory DTrace generation from driver: {augmented_test_driver_name}"
         )
         daikon.run_chicory_dtrace_generation()
+
+        logger.log(
+            f"> Run Daikon Invariant Checker from driver: {augmented_test_driver_name}"
+        )
+        daikon.run_invariant_checker(self.args.specfuzzer_invs_file)
