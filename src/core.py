@@ -1,3 +1,4 @@
+from daikon.daikon import Daikon
 from file_operations.file_ops import FileOperations
 from java_test_appender.java_test_appender import JavaTestApender
 from java_test_compiler.java_build_tool_compiler import JavaTestCompilationException
@@ -81,7 +82,7 @@ def run_testgen(args):
         method = args.method
         java_test_suite = args.test_suite
         java_test_driver = args.test_driver
-        spec_file = args.assertions_file
+        spec_file = args.buckets_assertions_file
 
         class_name = os.path.basename(java_class_src).replace(".java", "")
         subject_id = f"{class_name}_{method}"
@@ -102,7 +103,7 @@ def run_testgen(args):
         generated_test_suite = JavaTestSuite(
             java_class_src, java_test_suite, subject_id
         )
-        generated_test_driver = JavaTestDriver()
+        generated_test_driver = JavaTestDriver(args.test_driver)
 
         subject = Subject(
             java_class_src,
@@ -189,28 +190,51 @@ def run_testgen(args):
 class Core:
     def __init__(self, args) -> None:
         self.args = args
+        self.class_name = os.path.basename(args.target_class_src).replace(".java", "")
+        self.subject_id = f"{self.class_name}_{args.method}"
+        self.subject = Subject(
+            args.target_class_src,
+            args.buckets_assertions_file,
+            args.method,
+            JavaTestSuite(args.test_suite, args.target_class_src, self.subject_id),
+            JavaTestDriver(args.test_driver),
+        )
         self.compiler = JavaTestCompiler(args.target_class_src)
 
     def run_invariant_filter(self):
-        # Parse arguments
-        java_class_src = self.args.target_class_src
-        method = self.args.method
+        subject = self.subject
 
-        class_name = os.path.basename(java_class_src).replace(".java", "")
-        subject_id = f"{class_name}_{method}"
+        # Prepare the augmented test driver name for Daikon
+        augmented_test_driver_name = (
+            os.path.basename(self.args.test_driver).replace(".java", "") + "Augmented"
+        )
+        augmented_test_driver_fq_name = (
+            subject.test_driver.get_package_name() + "." + augmented_test_driver_name
+        )
 
         # Set up output directory for the subject
-        subject_output_dir = _create_subject_output_directory(subject_id)
+        subject_output_dir = _create_subject_output_directory(self.subject_id)
         subject_daikon_output_dir = _create_subdirectory(subject_output_dir, "daikon")
         subject_specs_output_dir = _create_subdirectory(subject_output_dir, "specs")
 
         # Setup logging
         logger = Logger(subject_daikon_output_dir + "/invfilter.log")
 
-        logger.log(f"Running dynamic invariant filtering for {subject_id}.")
+        logger.log(f"Running dynamic invariant filtering for {self.subject_id}.")
         logger.log(f"Arguments: {self.args}")
 
         self.compiler.compile_project()
         logger.log("Project compiled successfully.")
 
-        # daikon = Daikon()
+        daikon = Daikon(
+            subject,
+            augmented_test_driver_name,
+            augmented_test_driver_fq_name,
+            subject_daikon_output_dir,
+        )
+
+        logger.log(
+            f"> Run Dynamic Comparability Analysis from driver: \
+                {augmented_test_driver_name}"
+        )
+        daikon.run_dyn_comp()
