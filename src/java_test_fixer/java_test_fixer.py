@@ -2,12 +2,14 @@ import glob
 import os
 import re
 
+from utils.utils import Utils
+
 
 class JavaTestFixer:
     def __init__(self, path_to_class: str, path_to_suite: str):
         self.path_to_class = path_to_class
         self.path_to_suite = path_to_suite
-        self.class_package = self._extract_java_package(path_to_class)
+        self.class_package = Utils.get_java_package_from_path(path_to_class)
         self.class_directory = os.path.dirname(path_to_class)
         self.class_package_files = glob.glob(
             os.path.join(self.class_directory, "*.java")
@@ -39,10 +41,3 @@ class JavaTestFixer:
             pattern = re.compile(rf"(?<![\w\.]){re.escape(file_name)}(?![\w\.])")
             test_code = pattern.sub(full_name, test_code)
         return test_code
-
-    def _extract_java_package(self, file_path: str) -> str:
-        parts = file_path.split("/java/")
-        if len(parts) > 1:
-            result = parts[1].split("/")
-            return ".".join(result[:-1]).replace("/", ".")
-        return ""
