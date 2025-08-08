@@ -6,6 +6,9 @@ venv/
 __pycache__/
 *.pyc
 *.pyo
+.pytest_cache/
 
 # SpecValid output
 output/
+
+experiments/results/
