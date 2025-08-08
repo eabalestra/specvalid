@@ -27,7 +27,7 @@ class JavaLLMTestGenService:
         self.timestamp_logger = timestamp_logger
         self.assertions_from_specfuzzer = self.subject.collect_specs()
         self.code_extractor = JavaCodeExtractor()
-        self.compiler = JavaTestCompiler(subject.class_path_src)
+        self.compiler = JavaTestCompiler(str(self.subject.class_path_src))
 
     def run(self, prompts: list, models: list):
         self.logger.log(f"Starting test generation for {self.subject}...")
@@ -48,7 +48,7 @@ class JavaLLMTestGenService:
             elapsed_time = time.time() - start_time
             total_time += elapsed_time
 
-            generated_tests = self.re_prompt_until_valid(llm_response, models)
+            generated_tests = self.reprompt_until_valid(llm_response, models)
 
             for test in generated_tests:
                 self.subject.test_suite.add_test(test)
@@ -63,7 +63,7 @@ class JavaLLMTestGenService:
         )
         self.logger.log(f"Finished test generation for {self.subject}.")
 
-    def re_prompt_until_valid(self, llm_response: str, models: List[str]) -> List[str]:
+    def reprompt_until_valid(self, llm_response: str, models: List[str]) -> List[str]:
         test_list = []
         for attempt in range(1, MAX_COMPILE_ATTEMPTS + 1):
             test_list = self._extract_tests_from_response(llm_response)
@@ -87,6 +87,8 @@ class JavaLLMTestGenService:
 
     def _extract_tests_from_response(self, llm_response: str) -> List[str]:
         parsed_tests = self.code_extractor.extract_tests_from_response(llm_response)
+        cleaned_tests = []
         for test in parsed_tests:
             test = self.subject.test_suite.remove_assertions_from_test(test)
-        return parsed_tests
+            cleaned_tests.append(test)
+        return cleaned_tests
