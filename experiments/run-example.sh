@@ -14,6 +14,8 @@ export GOOGLE_API_KEY="aa"
 
 export MAX_COMPILE_ATTEMPTS=2
 
+export DAIKONDIR=/home/agustin/university/llm-based-assertion-confirmation/daikon-5.8.2
+
 source .venv/bin/activate
 
 java_class_src=/home/agustin/university/llm-based-assertion-confirmation/GAssert/subjects/QueueAr_makeEmpty/src/main/java/DataStructures/QueueAr.java
@@ -21,7 +23,8 @@ java_test_suite=/home/agustin/university/llm-based-assertion-confirmation/GAsser
 java_test_driver=/home/agustin/university/llm-based-assertion-confirmation/GAssert/subjects/QueueAr_makeEmpty/src/test/java/testers/QueueArTesterDriver.java
 bucket_assertions_file=/home/agustin/university/llm-based-assertion-confirmation/specfuzzer-subject-results/QueueAr_makeEmpty/output/QueueAr-makeEmpty-specfuzzer-1-buckets.assertions
 method=makeEmpty
-models="L_Mistral7B03Instruct_Q4,L_Gemma31"
+# models="L_Mistral7B03Instruct_Q4,L_Gemma31"
+models="L_Gemma31"
 prompts="General_V1"
 
 # For second validation
