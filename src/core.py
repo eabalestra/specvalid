@@ -1,3 +1,5 @@
+import shutil
+import subprocess
 from daikon.daikon import Daikon
 from file_operations.file_ops import FileOperations
 from java_test_appender.java_test_appender import JavaTestApender
@@ -212,13 +214,19 @@ class Core:
             subject.test_driver.get_package_name() + "." + augmented_test_driver_name
         )
 
-        # Set up output directory for the subject
         subject_output_dir = _create_subject_output_directory(self.subject_id)
+        if os.path.exists(subject_output_dir + "/daikon"):
+            shutil.rmtree(subject_output_dir + "/daikon")
+        if os.path.exists(subject_output_dir + "/specs"):
+            shutil.rmtree(subject_output_dir + "/specs")
+
+        # Set up output directory for the subject
         subject_daikon_output_dir = _create_subdirectory(subject_output_dir, "daikon")
+        subject_logs_output_dir = _create_subdirectory(subject_output_dir, "logs")
         subject_specs_output_dir = _create_subdirectory(subject_output_dir, "specs")
 
         # Setup logging
-        logger = Logger(subject_daikon_output_dir + "/invfilter.log")
+        logger = Logger(subject_logs_output_dir + "/invfilter.log")
 
         logger.log(f"Running dynamic invariant filtering for {self.subject_id}.")
         logger.log(f"Arguments: {self.args}")
@@ -234,17 +242,51 @@ class Core:
         )
 
         logger.log(
-            f"> Run Dynamic Comparability Analysis from driver: "
+            f"Run Dynamic Comparability Analysis from driver: "
             f"{augmented_test_driver_name}"
         )
         daikon.run_dyn_comp()
 
         logger.log(
-            f"> Run Chicory DTrace generation from driver: {augmented_test_driver_name}"
+            f"Run Chicory DTrace generation from driver: {augmented_test_driver_name}"
         )
         daikon.run_chicory_dtrace_generation()
 
         logger.log(
-            f"> Run Daikon Invariant Checker from driver: {augmented_test_driver_name}"
+            f"Run Daikon Invariant Checker from driver: {augmented_test_driver_name}"
         )
-        daikon.run_invariant_checker(self.args.specfuzzer_invs_file)
+        invalid_invs = daikon.run_invariant_checker(self.args.specfuzzer_invs_file)
+        invalid_invs = f"{subject_daikon_output_dir}/invs.csv"
+
+        # Build fully-qualified class name relative to src/main/java
+        full_qualified_class_name = self.args.target_class_src.replace("\\", "/")
+        if "/src/main/java/" in full_qualified_class_name:
+            full_qualified_class_name = full_qualified_class_name.split(
+                "/src/main/java/"
+            )[1]
+        full_qualified_class_name = full_qualified_class_name.rstrip(".java")
+        if full_qualified_class_name.endswith(".java"):
+            full_qualified_class_name = full_qualified_class_name[:-5]
+
+        full_qualified_class_name = full_qualified_class_name.replace("/", ".")
+
+        cmd = [
+            "python3",
+            "scripts/filter_invariants_of_interest.py",
+            invalid_invs,
+            full_qualified_class_name,
+            self.args.method,
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        logger.log(result.stdout)
+
+        cmd = [
+            "python3",
+            "scripts/extract_non_filtered_assertions.py",
+            self.args.specfuzzer_assertions_file,
+            f"{subject_specs_output_dir}/interest-specs.csv",
+            self.class_name,
+            self.args.method,
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        logger.log(result.stdout)
