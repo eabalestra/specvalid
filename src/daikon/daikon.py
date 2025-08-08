@@ -53,7 +53,7 @@ class Daikon:
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"Error running Chicory DTrace generation: {e}")
 
-    def run_invariant_checker(self, inv_gz_file: str) -> None:
+    def run_invariant_checker(self, inv_gz_file: str) -> str:
         dtrace_file = f"{self.output_dir}/{self.test_driver}.dtrace.gz"
         try:
             cmd = [
@@ -71,5 +71,6 @@ class Daikon:
             subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL)
             FileOperations.move_file("invs.csv", self.output_dir)
             FileOperations.remove_file("invs_file.xml")
+            return f"{self.output_dir}/invs.csv"
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"Error running Invariant Checker: {e}")
