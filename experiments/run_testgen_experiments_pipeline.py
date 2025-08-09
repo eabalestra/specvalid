@@ -9,24 +9,17 @@ from pathlib import Path
 
 def setup_environment():
     """Setup the environment by sourcing the config and activating venv."""
-    # Change to the project root directory
-    project_root = Path(__file__).parent.parent
-    os.chdir(project_root)
-
-    # Set up environment variables
+    # Get environment variables
     env = os.environ.copy()
-    daikon_path = (
-        "/home/agustin/university/llm-based-assertion-confirmation/" "daikon-5.8.2"
-    )
-    env.update(
-        {
-            "MAX_COMPILE_ATTEMPTS": "2",
-            "DAIKONDIR": daikon_path,
-            "OPENAI_API_KEY": env.get("OPENAI_API_KEY", ""),
-            "API_KEY_HUGGINGFACE": env.get("API_KEY_HUGGINGFACE", ""),
-            "GOOGLE_API_KEY": env.get("GOOGLE_API_KEY", "aa"),
-        }
-    )
+
+    # Get project root from environment variable or use the parent directory as default
+    project_root_str = env.get("SPECVALID_DIR", "")
+    if project_root_str:
+        project_root = Path(project_root_str)
+    else:
+        project_root = Path(__file__).parent.parent
+
+    os.chdir(project_root)
 
     return project_root, env
 
@@ -43,7 +36,6 @@ def get_subject_paths(subject_name, class_fq_name, method_name):
     Returns:
         dict: Dictionary containing all required file paths
     """
-    base_path = "/home/agustin/university/llm-based-assertion-confirmation"
 
     # Extract simple class name from fully qualified name
     class_name = class_fq_name.split(".")[-1] if "." in class_fq_name else class_fq_name
@@ -51,9 +43,11 @@ def get_subject_paths(subject_name, class_fq_name, method_name):
         class_fq_name.replace(".", "/") if "." in class_fq_name else class_fq_name
     )
 
-    # Build paths with proper line splitting
-    gassert_base = f"{base_path}/GAssert/subjects/{subject_name}"
-    specfuzzer_base = f"{base_path}/specfuzzer-subject-results/{subject_name}/output"
+    gassert_dir = os.environ.get("GASSERT_DIR")
+    gassert_base = f"{gassert_dir}/subjects/{subject_name}"
+
+    specs_dir = os.environ.get("SPECS_DIR")
+    specfuzzer_output_base = f"{specs_dir}/{subject_name}/output"
 
     paths = {
         "java_class_src": (f"{gassert_base}/src/main/java/{package_path}.java"),
@@ -64,14 +58,16 @@ def get_subject_paths(subject_name, class_fq_name, method_name):
             f"{gassert_base}/src/test/java/testers/" f"{class_name}TesterDriver.java"
         ),
         "bucket_assertions_file": (
-            f"{specfuzzer_base}/{class_name}-{method_name}-"
+            f"{specfuzzer_output_base}/{class_name}-{method_name}-"
             f"specfuzzer-1-buckets.assertions"
         ),
         "specfuzzer_invs_file": (
-            f"{specfuzzer_base}/{class_name}-{method_name}-" f"specfuzzer-1.inv.gz"
+            f"{specfuzzer_output_base}/{class_name}-{method_name}-"
+            f"specfuzzer-1.inv.gz"
         ),
         "specfuzzer_assertions_file": (
-            f"{specfuzzer_base}/{class_name}-{method_name}-" f"specfuzzer-1.assertions"
+            f"{specfuzzer_output_base}/{class_name}-{method_name}-"
+            f"specfuzzer-1.assertions"
         ),
         "method": method_name,
     }
