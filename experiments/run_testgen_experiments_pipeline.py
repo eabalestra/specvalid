@@ -207,8 +207,8 @@ def build_specvalid_command(paths, models, prompts):
 def main():
     """Main pipeline execution."""
     # Default values
-    DEFAULT_MODELS = "L_Gemma31"
-    DEFAULT_PROMPTS = "General_V1"
+    DEFAULT_MODELS = None
+    DEFAULT_PROMPTS = None
 
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="Run experiment pipeline")
@@ -236,6 +236,11 @@ def main():
     )
 
     args = parser.parse_args()
+
+    if args.models is None:
+        raise ValueError("Models must be specified")
+    if args.prompts is None:
+        raise ValueError("Prompts must be specified")
 
     # Setup environment
     project_root, env = setup_environment()
