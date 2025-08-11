@@ -1,6 +1,8 @@
 from llmservice.llm_service import LLMService
-from prompt.prompt import Prompt
-from prompt.prompt_id import PromptID
+
+from prompt.template_factory import PromptTemplateFactory
+
+from prompt.prompt_template import PromptID
 from subject.subject import Subject
 
 
@@ -27,7 +29,8 @@ class JavaTestGenerator:
         return self.llm_response
 
     def _generate_prompts(self, prompt_id, class_code, method_code, spec):
-        self.prompts.append(Prompt(prompt_id, class_code, method_code, spec))
+        prompt = PromptTemplateFactory.create_prompt(prompt_id, class_code, method_code, spec)
+        self.prompts.append(prompt)
 
     def _execute(self, pid, mid):
         combined_responses = ""
@@ -35,7 +38,7 @@ class JavaTestGenerator:
             if prompt.id is not pid:
                 continue
             response = self.llm_service.execute_prompt(
-                mid, prompt.prompt, prompt.format_instructions
+                mid, prompt.generate_prompt(), prompt.format_instructions
             )
             if response is not None:
                 combined_responses += response

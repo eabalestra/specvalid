@@ -1,4 +1,4 @@
-TEST_GENERATION_PROMPT = """
+BASE_TEMPLATE = """
 You are an expert in program verification and testing. You are given a Java method and a postcondition assertion for that method.
 Based on the method behavior, you will need to confirm that the method meets the postcondition.
 If indeed the method meets the postcondition, you MUST output "OK".

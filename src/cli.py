@@ -1,7 +1,7 @@
 from argsparser.parser import build_parser
 from core import Core
 from llmservice.llm_service import LLMService
-from prompt.prompt_id import PromptID
+from prompt.prompt_template import PromptID
 
 
 def print_available_llms(llm_service: LLMService):
