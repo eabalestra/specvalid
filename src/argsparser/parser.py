@@ -7,7 +7,21 @@ def list_of_strings(arg):
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="specvalid")
-    sub = parser.add_subparsers(dest="command", required=True)
+
+    parser.add_argument(
+        "--list-llms",
+        dest="list_llms",
+        action="store_true",
+        help="List all supported LLMs and exit.",
+    )
+    parser.add_argument(
+        "--list-prompts",
+        dest="list_prompts",
+        action="store_true",
+        help="List all available prompts and exit.",
+    )
+
+    sub = parser.add_subparsers(dest="command", required=False)
 
     # testgen command
     testgen = sub.add_parser("testgen")
@@ -49,21 +63,6 @@ def build_parser() -> argparse.ArgumentParser:
         default="",
         help="List the prompts to use.",
         metavar="PROMPTS",
-    )
-    testgen.add_argument(
-        "-ll",
-        "--llms",
-        "--llm-list",
-        dest="list_llms",
-        action="store_true",
-        help="List the supported LLMs.",
-    )
-    testgen.add_argument(
-        "-pl",
-        "--prompt-list",
-        dest="list_prompts",
-        action="store_true",
-        help="List the available prompts.",
     )
     testgen.add_argument(
         "-sf",
