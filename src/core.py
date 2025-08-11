@@ -205,88 +205,95 @@ class Core:
 
             logger.log("> Test generation completed successfully.")
         except Exception as e:
-            print(f"Error: {e}")
-            return
+            print(f"❌ Error: {e}")
+            exit(1)
 
     def run_invariant_filter(self):
-        subject = self.subject
+        try:
+            subject = self.subject
 
-        # Prepare the augmented test driver name for Daikon
-        augmented_test_driver_name = (
-            os.path.basename(self.args.test_driver).replace(".java", "") + "Augmented"
-        )
-        augmented_test_driver_fq_name = (
-            subject.test_driver.get_package_name() + "." + augmented_test_driver_name
-        )
+            # Prepare the augmented test driver name for Daikon
+            augmented_test_driver_name = (
+                os.path.basename(self.args.test_driver).replace(".java", "")
+                + "Augmented"
+            )
+            augmented_test_driver_fq_name = (
+                subject.test_driver.get_package_name()
+                + "."
+                + augmented_test_driver_name
+            )
 
-        subject_output_dir = _create_subject_output_directory(self.subject_id)
+            subject_output_dir = _create_subject_output_directory(self.subject_id)
 
-        # Set up output directory for the subject
-        subject_daikon_output_dir = _init_subdirectory(subject_output_dir, "daikon")
-        subject_specs_output_dir = _init_subdirectory(subject_output_dir, "specs")
+            # Set up output directory for the subject
+            subject_daikon_output_dir = _init_subdirectory(subject_output_dir, "daikon")
+            subject_specs_output_dir = _init_subdirectory(subject_output_dir, "specs")
 
-        # Setup logging
-        logger = Logger(self.logs_output_dir + "/invfilter.log")
+            # Setup logging
+            logger = Logger(self.logs_output_dir + "/invfilter.log")
 
-        logger.log(f"Running dynamic invariant filtering for {self.subject_id}.")
-        logger.log(f"Arguments: {self.args}")
+            logger.log(f"Running dynamic invariant filtering for {self.subject_id}.")
+            logger.log(f"Arguments: {self.args}")
 
-        self.compiler.compile_project()
-        logger.log("Project compiled successfully.")
+            self.compiler.compile_project()
+            logger.log("Project compiled successfully.")
 
-        daikon = Daikon(
-            subject,
-            augmented_test_driver_name,
-            augmented_test_driver_fq_name,
-            subject_daikon_output_dir,
-        )
+            daikon = Daikon(
+                subject,
+                augmented_test_driver_name,
+                augmented_test_driver_fq_name,
+                subject_daikon_output_dir,
+            )
 
-        logger.log(
-            f"Run Dynamic Comparability Analysis from driver: "
-            f"{augmented_test_driver_name}"
-        )
-        daikon.run_dyn_comp()
+            logger.log(
+                f"Run Dynamic Comparability Analysis from driver: "
+                f"{augmented_test_driver_name}"
+            )
+            daikon.run_dyn_comp()
 
-        logger.log(
-            f"Run Chicory DTrace generation from driver: {augmented_test_driver_name}"
-        )
-        daikon.run_chicory_dtrace_generation()
+            logger.log(
+                f"Run Chicory DTrace generation from driver: {augmented_test_driver_name}"
+            )
+            daikon.run_chicory_dtrace_generation()
 
-        logger.log(
-            f"Run Daikon Invariant Checker from driver: {augmented_test_driver_name}"
-        )
-        invalid_invs = daikon.run_invariant_checker(self.args.specfuzzer_invs_file)
-        invalid_invs = f"{subject_daikon_output_dir}/invs.csv"
+            logger.log(
+                f"Run Daikon Invariant Checker from driver: {augmented_test_driver_name}"
+            )
+            invalid_invs = daikon.run_invariant_checker(self.args.specfuzzer_invs_file)
+            invalid_invs = f"{subject_daikon_output_dir}/invs.csv"
 
-        # Build fully-qualified class name relative to src/main/java
-        full_qualified_class_name = self.args.target_class_src.replace("\\", "/")
-        if "/src/main/java/" in full_qualified_class_name:
-            full_qualified_class_name = full_qualified_class_name.split(
-                "/src/main/java/"
-            )[1]
-        full_qualified_class_name = full_qualified_class_name.rstrip(".java")
-        if full_qualified_class_name.endswith(".java"):
-            full_qualified_class_name = full_qualified_class_name[:-5]
+            # Build fully-qualified class name relative to src/main/java
+            full_qualified_class_name = self.args.target_class_src.replace("\\", "/")
+            if "/src/main/java/" in full_qualified_class_name:
+                full_qualified_class_name = full_qualified_class_name.split(
+                    "/src/main/java/"
+                )[1]
+            full_qualified_class_name = full_qualified_class_name.rstrip(".java")
+            if full_qualified_class_name.endswith(".java"):
+                full_qualified_class_name = full_qualified_class_name[:-5]
 
-        full_qualified_class_name = full_qualified_class_name.replace("/", ".")
+            full_qualified_class_name = full_qualified_class_name.replace("/", ".")
 
-        cmd = [
-            "python3",
-            "scripts/filter_invariants_of_interest.py",
-            invalid_invs,
-            full_qualified_class_name,
-            self.args.method,
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        logger.log(result.stdout)
+            cmd = [
+                "python3",
+                "scripts/filter_invariants_of_interest.py",
+                invalid_invs,
+                full_qualified_class_name,
+                self.args.method,
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            logger.log(result.stdout)
 
-        cmd = [
-            "python3",
-            "scripts/extract_non_filtered_assertions.py",
-            self.args.specfuzzer_assertions_file,
-            f"{subject_specs_output_dir}/interest-specs.csv",
-            self.class_name,
-            self.args.method,
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        logger.log(result.stdout)
+            cmd = [
+                "python3",
+                "scripts/extract_non_filtered_assertions.py",
+                self.args.specfuzzer_assertions_file,
+                f"{subject_specs_output_dir}/interest-specs.csv",
+                self.class_name,
+                self.args.method,
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            logger.log(result.stdout)
+        except Exception as e:
+            print(f"❌ Error: {e}")
+            exit(1)
