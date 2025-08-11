@@ -18,7 +18,7 @@ class JavaTestCompiler:
     def compile_project(self) -> None:
         try:
             subprocess.run(
-                ["./gradlew", "build"],
+                ["./gradlew", "compileJava", "compileTestJava"],
                 cwd=self.project_root,
                 capture_output=True,
                 text=True,
