@@ -1,9 +1,10 @@
 import os
 
+from llmservice.providers.ollama.ollama import OllamaProvider
+
 from openai import OpenAI
 from pydantic import ValidationError
 from huggingface_hub import InferenceClient
-from ollama import ChatResponse, chat
 from google import genai
 
 
@@ -140,13 +141,18 @@ class LLMService:
     #         'Falcon40BInstruct', 'FalconMamba7BInstruct', 'FalconMamba7B']
     timeout_models = []
 
-    gpt_client = OpenAI(
-        # This is the default and can be omitted
-        api_key=os.environ.get("OPENAI_API_KEY"),
-        timeout=TIMEOUT,
-    )
+    try:
+        openai_api_key = os.environ.get("OPENAI_API_KEY")
+        if openai_api_key:
+            gpt_client = OpenAI(api_key=openai_api_key, timeout=TIMEOUT)
+        else:
+            print("OPENAI_API_KEY not set. GPT API will not be configured.")
+    except Exception as e:
+        print(f"Error initializing OpenAI client: {e}")
 
     hf_api_key = os.environ.get("API_KEY_HUGGINGFACE")
+    if not hf_api_key:
+        print("API_KEY_HUGGINGFACE not set. Hugging Face API will not be configured.")
 
     try:
         gemini_api_key = os.environ.get("GOOGLE_API_KEY")
@@ -185,7 +191,13 @@ class LLMService:
         elif model_id.startswith("GPT"):
             response = self.gpt_execute_prompt(model_id, prompt, format_instructions)
         elif model_id.startswith("L_"):
-            response = self.ollama_execute_prompt(model_id, prompt, format_instructions)
+            ollama = OllamaProvider()
+            model_url = self.get_model_url(model_id)
+            if model_url == "":
+                model_url = self.get_model_url("L_Phi4")
+            response = ollama.ollama_execute_prompt(
+                model_url, prompt, format_instructions
+            )
         elif model_id.startswith("Gemini"):
             response = self.gemini_execute_prompt(model_id, prompt, format_instructions)
         elif model_id.startswith("Llama32"):
@@ -253,46 +265,6 @@ class LLMService:
             return None
         except Exception as exc:
             print("gpt_execute_prompt: general exception: ", exc)
-            return None
-
-    def ollama_execute_prompt(self, model_id, prompt: str, format_instructions=""):
-        # Ollama models are prefixed with 'L_'
-        model_url = self.get_model_url(model_id)
-        if model_url == "":
-            model_url = self.get_model_url("L_Phi4")
-        try:
-            response: ChatResponse = chat(
-                model=str(model_url),
-                messages=[
-                    {
-                        "role": "user",
-                        "content": prompt,
-                    },
-                ],
-            )
-
-            # if not response.done:
-            #     if response.status_code == 503:  # model remains cold
-            #         self.cold_models.append(model_id)
-            #     elif response.status_code == 504:  # model timeout
-            #         self.timeout_models.append(model_id)
-            #     elif response.status_code == 429:  # Rate limit reached.
-            #         print("ollama: Rate limit reached" + response.text)
-            #         return "error=429"
-            #     else:  # response.status_code == 403 or 400: # error model
-            #         self.error_models.append(model_id)
-            #     print(f"[ERROR] ollama: {model_id} not response.ok {response.text}")
-
-            if not response["done"]:
-                if response.get("error"):
-                    print(f"[ERROR] ollama: {model_id} error: {response['error']}")
-                    return None
-            return response.message.content
-        except ValidationError as err:
-            print("[ERROR] ollama:ValidationError: ", err)
-            return None
-        except Exception as exc:
-            print("[ERROR] ollama: general exception: ", exc)
             return None
 
     def gemini_execute_prompt(self, model_id, prompt: str, format_instructions=""):
