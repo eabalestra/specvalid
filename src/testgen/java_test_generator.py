@@ -29,7 +29,9 @@ class JavaTestGenerator:
         return self.llm_response
 
     def _generate_prompts(self, prompt_id, class_code, method_code, spec):
-        prompt = PromptTemplateFactory.create_prompt(prompt_id, class_code, method_code, spec)
+        prompt = PromptTemplateFactory.create_prompt(
+            prompt_id, class_code, method_code, spec
+        )
         self.prompts.append(prompt)
 
     def _execute(self, pid, mid):
