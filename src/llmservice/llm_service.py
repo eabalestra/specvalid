@@ -31,7 +31,7 @@ class LLMService:
         "L_DeepSeekR1Llama8": "deepseek-r1:8b-llama-distill-fp16",
         "L_DeepSeekR1Llama70_Q4": "deepseek-r1:70b",
         # Locally deployed quantized models,
-        "L_llama3.2:3b-instruct-q8_0": "llama3.2:3b-instruct-q8_0",
+        "L_Llama323bInstruct_Q8": "llama3.2:3b-instruct-q8_0",
         "L_Llama3370Instruct_Q4": "llama3.3:70b-instruct-q4_K_M",
         "L_Mistral7B03Instruct_Q4": "mistral:7b-instruct-q4_K_M",
         "L_Phi4_Q4": "phi4:14b-q4_K_M",
