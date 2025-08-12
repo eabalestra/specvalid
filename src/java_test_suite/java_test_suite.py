@@ -53,9 +53,9 @@ class JavaTestSuite:
         FileOperations.write_file(output_file, joined_test_cases)
 
     def _rename_test_methods(self, test_methods: List[str], new_name: str) -> List[str]:
-        name_pattern = r"public void \w+\(\)"
+        name_pattern = r"((?:public\s+)?void)\s+\w+\(\)"
         return [
-            re.sub(name_pattern, f"public void {new_name}{i}()", test_method)
+            re.sub(name_pattern, rf"\1 {new_name}{i}()", test_method)
             for i, test_method in enumerate(test_methods)
         ]
 

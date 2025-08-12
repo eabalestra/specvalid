@@ -5,7 +5,7 @@ from typing import List
 from exceptions.java_test_compilation_exception import JavaTestCompilationException
 from java_code_extractor.java_code_extractor import JavaCodeExtractor
 from java_test_compiler.java_test_compiler import JavaTestCompiler
-from prompt.prompt_id import PromptID
+from prompt.prompt_template import PromptID
 from subject.subject import Subject
 from testgen.java_test_generator import JavaTestGenerator
 from logger.logger import Logger
@@ -89,6 +89,6 @@ class JavaLLMTestGenService:
         parsed_tests = self.code_extractor.extract_tests_from_response(llm_response)
         cleaned_tests = []
         for test in parsed_tests:
-            test = self.subject.test_suite.remove_assertions_from_test(test)
+            test = self.subject.test_suite.java_test_fixer.repair_java_test(test)
             cleaned_tests.append(test)
         return cleaned_tests

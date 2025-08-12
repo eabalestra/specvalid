@@ -10,7 +10,8 @@ from java_test_file_updater.java_test_file_updater import JavaTestFileUpdater
 from java_test_suite.java_test_suite import JavaTestSuite
 from llmservice.llm_service import LLMService
 from logger.logger import Logger
-from prompt.prompt_id import PromptID
+
+from prompt.prompt_template import PromptID
 from services.java_llmtesgen_service import JavaLLMTestGenService
 from subject.subject import Subject
 from testgen.java_test_generator import JavaTestGenerator
