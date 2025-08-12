@@ -89,6 +89,6 @@ class JavaLLMTestGenService:
         parsed_tests = self.code_extractor.extract_tests_from_response(llm_response)
         cleaned_tests = []
         for test in parsed_tests:
-            test = self.subject.test_suite.remove_assertions_from_test(test)
+            test = self.subject.test_suite.java_test_fixer.repair_java_test(test)
             cleaned_tests.append(test)
         return cleaned_tests
