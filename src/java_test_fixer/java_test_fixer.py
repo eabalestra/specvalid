@@ -18,7 +18,7 @@ class JavaTestFixer:
     def repair_java_test(self, test_code: str) -> str:
         if test_code.strip() == "":
             return test_code
-        test = self._add_throws_signature_(test_code)
+        test = self._add_throws_signature(test_code)
         test = self._replace_class_references(test)
         return self._add_test_annotation(test)
 
@@ -28,7 +28,7 @@ class JavaTestFixer:
             test_code = f"@Test\n{test_code}"
         return test_code
 
-    def _add_throws_signature_(self, test_code: str) -> str:
+    def _add_throws_signature(self, test_code: str) -> str:
         pattern = r"(public void \w+\(\))\s*(?:throws\s+[^\\{]*)?\s*\{"
         replacement = r"\1 throws Throwable {"
         return re.sub(pattern, replacement, test_code)
