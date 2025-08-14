@@ -133,7 +133,7 @@ class Core:
                 generated_test_suite,
                 generated_test_driver,
             )
-            java_test_generator = JavaTestGenerator(subject)
+            java_test_generator = JavaTestGenerator(subject, logger)
 
             # Service for test generation
             testgen_service = JavaLLMTestGenService(

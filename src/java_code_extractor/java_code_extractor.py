@@ -114,3 +114,17 @@ class JavaCodeExtractor:
                     break
 
         return class_code[start_index:end_index]
+
+    @staticmethod
+    def extract_other_method_signatures(class_code: str) -> List[str]:
+        pattern = r"^\s*(?:(?:public)|(?:private)|(?:static)|(?:protected)\s+)*.*\s+(\w+)\s*\(.*\)\s*(?:throws\s+[\w\s,]+)?\s*{"
+        matches = re.findall(pattern, class_code, re.MULTILINE)
+        return matches
+
+    @staticmethod
+    def extract_method_signature(method_code: str) -> str:
+        pattern = r"^\s*(?:(?:public)|(?:private)|(?:static)|(?:protected)\s+)*.*\s+(\w+)\s*\(.*\)\s*(?:throws\s+[\w\s,]+)?\s*{"
+        match = re.search(pattern, method_code, re.MULTILINE)
+        if match:
+            return match.group(1)
+        return ""
