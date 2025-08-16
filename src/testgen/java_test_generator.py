@@ -97,10 +97,6 @@ class JavaTestGenerator:
 
             response = self.llm_service.execute_prompt(model_id, prompt, "")
 
-            # print(f"Attempt {attempt} for test: {test}")
-            # print(f"Prompt for LLM: {prompt}")
-            # print(f"Response from LLM: {response}")
-
             if response is not None:
                 extracted_tests = self._extract_tests_from_response(response)
                 # Check if extracted_tests is not empty before accessing index 0
