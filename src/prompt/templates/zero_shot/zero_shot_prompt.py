@@ -1,5 +1,5 @@
 from prompt.prompt_template import Prompt
-from prompt.templates.test_generation.zero_shot.template import BASE_TEMPLATE
+from prompt.templates.zero_shot.template import BASE_TEMPLATE
 
 
 class ZeroShotPrompt(Prompt):
