@@ -3,7 +3,6 @@ import subprocess
 from daikon.daikon import Daikon
 from file_operations.file_ops import FileOperations
 from java_test_appender.java_test_appender import JavaTestApender
-from java_test_compiler.java_build_tool_compiler import JavaTestCompilationException
 from java_test_compiler.java_test_compiler import JavaTestCompiler
 from java_test_driver.java_test_driver import JavaTestDriver
 from java_test_file_updater.java_test_file_updater import JavaTestFileUpdater
@@ -146,6 +145,36 @@ class Core:
             )
             prompt_IDs = select_prompts(args.prompts_list)
 
+            # TODO: TEMPORAL: Use pre-generated tests from SuiteForTesting.java instead of LLM
+            # This is only for testing purposes - comment out for normal operation
+            # suite_for_testing_path = "tests/SuiteForTesting.java"
+            # if os.path.exists(suite_for_testing_path):
+            #     logger.log(
+            #         "TEMPORAL: Using pre-generated tests from SuiteForTesting.java"
+            #     )
+            #     with open(suite_for_testing_path, "r") as f:
+            #         test_content = f.read()
+
+            #     # Extract individual test methods from the file
+            #     import re
+
+            #     pattern = (
+            #         r"@Test\s+public\s+void\s+\w+\([^)]*\)\s*throws[^{]*\{"
+            #         r"(?:[^{}]|\{[^{}]*\})*\}"
+            #     )
+            #     test_methods = re.findall(
+            #         pattern, test_content, re.MULTILINE | re.DOTALL
+            #     )
+
+            #     # Add tests to the test suite using a fake model name
+            #     fake_model = "pre-generated-tests"
+            #     for test_method in test_methods:
+            #         subject.test_suite.add_test_by_model(
+            #             fake_model, test_method.strip()
+            #         )
+
+            #     logger.log(f"TEMPORAL: Loaded {len(test_methods)} pre-generated tests")
+
             # Run test generation using LLM's
             testgen_service.run(prompts=prompt_IDs, models=models)
 
@@ -163,11 +192,6 @@ class Core:
             for model_id in subject.test_suite.get_all_models():
                 model_tests = subject.test_suite.get_tests_by_model(model_id)
                 logger.log(f"Model {model_id} generated {len(model_tests)} tests")
-
-            # TODO: uncomment this for testing
-            # subject.test_suite.test_list = JavaTestSuite.extract_tests_from_file(
-            #     "tests/suite_for_testing.java"
-            # )
 
             logger.log(
                 f"Processing {len(subject.test_suite.test_list)} tests for {subject_id}."
@@ -242,7 +266,8 @@ class Core:
             #     f"compiled tests from all models."
             # )
 
-            # Do not remove this line: it is used to read the logs and analyze the results
+            # Do not remove this line:
+            #   it is used to read the logs and analyze the results
             logger.log(f"Compiled {len(aggregated_compiled_tests)} tests successfully.")
             logger.log("> Test generation completed successfully.")
         except Exception as e:

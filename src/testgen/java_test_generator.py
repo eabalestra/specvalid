@@ -57,11 +57,12 @@ class JavaTestGenerator:
                 mid, prompt.generate_prompt(), prompt.format_instructions
             )
 
+            print(f"Response for prompt {pid} and model {mid}: \n{response}\n\n")
+
             if response is not None:
                 self.logger.log(
                     f"LLM response for prompt {pid} and model {mid}: {response}"
                 )
-
                 tests_from_response = self._extract_tests_from_response(response)
                 if tests_from_response:
                     for test in tests_from_response:
@@ -146,7 +147,7 @@ The signatures of other methods in its class are `{other_method_sigs}`
 ```
 
 Please fix the error in the unit test and return the whole fixed unit test.
-You can use Junit 5, Mockito 3 and reflection. No explanation is needed.
+You can use Junit 4. No explanation is needed.
         """
         return base_prompt.format(
             unit_test=unit_test,
