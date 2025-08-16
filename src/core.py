@@ -235,13 +235,15 @@ class Core:
                 aggregated_compiled_summary,
             )
 
-            logger.log(f"Compiled {len(aggregated_compiled_tests)} tests.")
             # logger.log(f"Original approach: Compiled {len(compiled_test_cases)}
             # tests.")
             # logger.log(
             #     f"New approach: Aggregated {len(aggregated_compiled_tests)} "
             #     f"compiled tests from all models."
             # )
+
+            # Do not remove this line: it is used to read the logs and analyze the results
+            logger.log(f"Compiled {len(aggregated_compiled_tests)} tests successfully.")
             logger.log("> Test generation completed successfully.")
         except Exception as e:
             print(f"❌ Error: {e}")
