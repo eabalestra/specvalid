@@ -25,17 +25,21 @@ class JavaTestGenerator:
     def generate_test(
         self, class_code, method_code, spec, prompt_ids=PromptID.all(), models_ids=[]
     ):
-        generated_test_cases = []
+        generated_test_cases_by_model = {}
         self.prompts = []
 
         for pid in prompt_ids:
             self._generate_prompts(pid, class_code, method_code, spec)
 
         for mid in models_ids:
+            if mid not in generated_test_cases_by_model:
+                generated_test_cases_by_model[mid] = []
+
             for pid in prompt_ids:
                 llm_generated_cases = self._execute(pid, mid)
-                generated_test_cases.extend(llm_generated_cases)
-        return generated_test_cases
+                generated_test_cases_by_model[mid].extend(llm_generated_cases)
+
+        return generated_test_cases_by_model
 
     def _generate_prompts(self, prompt_id, class_code, method_code, spec):
         prompt = PromptTemplateFactory.create_prompt(
@@ -48,6 +52,7 @@ class JavaTestGenerator:
         for prompt in self.prompts:
             if prompt.id is not pid:
                 continue
+
             response = self.llm_service.execute_prompt(
                 mid, prompt.generate_prompt(), prompt.format_instructions
             )
@@ -62,6 +67,7 @@ class JavaTestGenerator:
                     for test in tests_from_response:
                         test = self._reprompt_until_validate(mid, test)
                         responses.append(test)
+
         return responses
 
     def _extract_tests_from_response(self, llm_response: str) -> List[str]:
@@ -91,9 +97,9 @@ class JavaTestGenerator:
 
             response = self.llm_service.execute_prompt(model_id, prompt, "")
 
-            print(f"Attempt {attempt} for test: {test}")
-            print(f"Prompt for LLM: {prompt}")
-            print(f"Response from LLM: {response}")
+            # print(f"Attempt {attempt} for test: {test}")
+            # print(f"Prompt for LLM: {prompt}")
+            # print(f"Response from LLM: {response}")
 
             if response is not None:
                 extracted_tests = self._extract_tests_from_response(response)
@@ -143,8 +149,8 @@ the source code of the method under test and its class is:
 The signatures of other methods in its class are `{other_method_sigs}`
 ```
 
-Please fix the error and return the whole fixed unit test. You can use Junit 5,
-Mockito 3 and reflection. No explanation is needed.
+Please fix the error in the unit test and return the whole fixed unit test.
+You can use Junit 5, Mockito 3 and reflection. No explanation is needed.
         """
         return base_prompt.format(
             unit_test=unit_test,
