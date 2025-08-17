@@ -9,6 +9,7 @@ from logger.logger import Logger
 from prompt.template_factory import PromptTemplateFactory
 
 from prompt.prompt_template import PromptID
+from specs.specs import Specs
 from subject.subject import Subject
 
 MAX_COMPILE_ATTEMPTS = int(os.getenv("MAX_COMPILE_ATTEMPTS", "3"))
@@ -36,7 +37,7 @@ class JavaTestGenerator:
                 generated_test_cases_by_model[mid] = []
 
             for pid in prompt_ids:
-                llm_generated_cases = self._execute(pid, mid)
+                llm_generated_cases = self._execute(pid, mid, spec)
                 generated_test_cases_by_model[mid].extend(llm_generated_cases)
 
         return generated_test_cases_by_model
@@ -47,7 +48,7 @@ class JavaTestGenerator:
         )
         self.prompts.append(prompt)
 
-    def _execute(self, pid, mid) -> List[str]:
+    def _execute(self, pid, mid, spec) -> List[str]:
         responses = []
         for prompt in self.prompts:
             if prompt.id is not pid:
@@ -57,7 +58,7 @@ class JavaTestGenerator:
                 mid, prompt.generate_prompt(), prompt.format_instructions
             )
 
-            print(f"Response for prompt {pid} and model {mid}: \n{response}\n\n")
+            # print(f"Response for prompt {pid} and model {mid}: \n{response}\n\n")
 
             if response is not None:
                 self.logger.log(
@@ -67,6 +68,7 @@ class JavaTestGenerator:
                 if tests_from_response:
                     for test in tests_from_response:
                         test = self._reprompt_until_validate(mid, test)
+                        test = Specs.add_spec_annotation(test, spec)
                         responses.append(test)
 
         return responses

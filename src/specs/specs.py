@@ -1,17 +1,15 @@
-
-
 from re import search
 import re
 
 
 def _strip_outer_parentheses(spec: str) -> str:
     spec = spec.strip()
-    if spec.startswith('(') and spec.endswith(')'):
+    if spec.startswith("(") and spec.endswith(")"):
         depth = 0
         for i, ch in enumerate(spec):
-            if ch == '(':
+            if ch == "(":
                 depth += 1
-            elif ch == ')':
+            elif ch == ")":
                 depth -= 1
             if depth == 0 and i < len(spec) - 1:
                 return spec
@@ -44,8 +42,7 @@ class Specs:
             processed_spec = processed_spec.strip()
             variable_names = vars_section.strip().strip("<>").split(",")
 
-            quantified_pattern = re.compile(
-                r'\b(?:some|all|no)\s+n\b', re.IGNORECASE)
+            quantified_pattern = re.compile(r"\b(?:some|all|no)\s+n\b", re.IGNORECASE)
             if quantified_pattern.search(processed_spec):
                 variable_names = variable_names[1:]
 
@@ -54,10 +51,9 @@ class Specs:
                 if (var == "this" or var == "orig(this)") and class_name in spec:
                     processed_spec = processed_spec.replace(class_name, var)
                     var = next(variable_iter, var)
-                match = re.search(r'\w+_Variable_\d+', processed_spec)
+                match = re.search(r"\w+_Variable_\d+", processed_spec)
                 if match:
-                    processed_spec = processed_spec.replace(
-                        match.group(0), var.strip())
+                    processed_spec = processed_spec.replace(match.group(0), var.strip())
 
         processed_spec = processed_spec.replace("daikon.Quant.", "")
         processed_spec = processed_spec.replace("orig(", r"\old(")
@@ -65,9 +61,28 @@ class Specs:
         return _strip_outer_parentheses(processed_spec).strip()
 
     def _is_inv_line(self, line: str) -> bool:
-        return not (search(":::OBJECT", line) or
-                    search("==============", line) or
-                    search(":::POSTCONDITION", line) or
-                    search(":::ENTER", line) or
-                    search("buckets=", line) or
-                    search("specs=", line))
+        return not (
+            search(":::OBJECT", line)
+            or search("==============", line)
+            or search(":::POSTCONDITION", line)
+            or search(":::ENTER", line)
+            or search("buckets=", line)
+            or search("specs=", line)
+        )
+
+    @staticmethod
+    def add_spec_annotation(code: str, spec: str) -> str:
+        test_method_start = code.find("@Test")
+        if test_method_start == -1:
+            return code
+
+        method_body_start = code.find("{", test_method_start)
+        if method_body_start == -1:
+            return code
+
+        specification_comment = "\n    // Spec: " + spec
+        code_before_brace = code[: method_body_start + 1]
+        code_after_brace = code[method_body_start + 1 :]
+        modified_code = code_before_brace + specification_comment + code_after_brace
+
+        return modified_code
