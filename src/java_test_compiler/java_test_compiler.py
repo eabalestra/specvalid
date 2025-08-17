@@ -1,6 +1,8 @@
 from pathlib import Path
 import subprocess
+from typing import Dict, List
 
+from exceptions.java_test_compilation_exception import JavaTestCompilationException
 from java_test_compiler.java_build_tool_compiler import JavaBuildToolCompiler
 from java_test_compiler.javac_compiler import JavacCompiler
 
@@ -49,3 +51,16 @@ class JavaTestCompiler:
     def _compile_test_with_javac(self, test: str) -> None:
         javac_compiler = JavacCompiler()
         javac_compiler.compile(test)
+
+    def _attempt_test_compilation(
+        self, tests: List[str], with_tool: bool = True
+    ) -> Dict:
+        try:
+            test_suite = "\n".join(tests)
+            self.compile(test=test_suite, with_tool=with_tool)
+            return {"success": True, "errors": []}
+
+        except JavaTestCompilationException as e:
+            return {"success": False, "errors": [str(e)]}
+        except Exception as e:
+            return {"success": False, "errors": [f"Unexpected error: {str(e)}"]}
