@@ -2,6 +2,7 @@ import os
 from typing import List
 from java_code_extractor.java_code_extractor import JavaCodeExtractor
 from java_test_compiler.java_test_compiler import JavaTestCompiler
+from java_test_fixer.java_test_fixer import JavaTestFixer
 from llmservice.llm_service import LLMService
 
 from logger.logger import Logger
@@ -74,9 +75,18 @@ class JavaTestGenerator:
 
                 if tests_from_response:
                     for test in tests_from_response:
-                        test = self._reprompt_until_validate(mid, test)
-                        test = Specs.add_spec_annotation(test, spec)
-                        responses.append(test)
+                        # Validate and fix the test
+                        validated_test = self._reprompt_until_validate(mid, test)
+
+                        # Version with spec annotation
+                        test_with_spec = Specs.add_spec_annotation(validated_test, spec)
+                        responses.append(test_with_spec)
+
+                        # Version without assert wrappers
+                        test_without_wrappers = JavaTestFixer._remove_assert_wrappers(
+                            test_with_spec
+                        )
+                        responses.append(test_without_wrappers)
 
         return responses
 
@@ -113,7 +123,8 @@ class JavaTestGenerator:
                     continue
 
         self.logger.log_warning(
-            f"Max attempts reached for test. Returning last version (may be invalid): {test}"
+            f"Max attempts reached for test. Returning last version "
+            f"(may be invalid):\n{test}"
         )
         return test
 
