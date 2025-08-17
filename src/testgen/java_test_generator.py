@@ -11,6 +11,8 @@ from prompt.prompt_template import PromptID
 from specs.specs import Specs
 from subject.subject import Subject
 
+import concurrent.futures
+
 MAX_COMPILE_ATTEMPTS = int(os.getenv("MAX_COMPILE_ATTEMPTS", "3"))
 
 
@@ -123,3 +125,32 @@ class JavaTestGenerator:
             test = self.subject.test_suite.java_test_fixer.repair_java_test(test)
             cleaned_tests.append(test)
         return cleaned_tests
+
+    # def generate_test(
+    #     self, class_code, method_code, spec, prompt_ids=PromptID.all(), models_ids=[]
+    # ):
+    #     if not prompt_ids or not models_ids:
+    #         raise ValueError("prompt_ids and models_ids required.")
+    #     self.prompts = []
+    #     generated_test_cases_by_model = {mid: [] for mid in models_ids}
+
+    #     for pid in set(prompt_ids):
+    #         self._generate_prompts(pid, class_code, method_code, spec)
+
+    #     with concurrent.futures.ThreadPoolExecutor() as executor:
+    #         futures = {
+    #             executor.submit(self._process_model, mid, prompt_ids, spec): mid
+    #             for mid in models_ids
+    #         }
+    #         for future in concurrent.futures.as_completed(futures):
+    #             mid = futures[future]
+    #             generated_test_cases_by_model[mid].extend(future.result())
+
+    #     return generated_test_cases_by_model
+
+    # def _process_model(self, mid, prompt_ids, spec):
+    #     responses = []
+    #     for pid in prompt_ids:
+    #         llm_generated_cases = self._execute(pid, mid, spec)
+    #         responses.extend(llm_generated_cases)
+    #     return responses
