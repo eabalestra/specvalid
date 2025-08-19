@@ -282,18 +282,13 @@ class Core:
                 f"{self.output_dir}/test/all_compiled_tests.java"
             )
 
-            # Set up the suite and driver for append the generated tests
-            new_test_suite_path = JavaTestFileUpdater.prepare_test_file(
-                self.args.test_suite, "Augmented", is_driver=False
-            )
-            new_test_driver_path = JavaTestFileUpdater.prepare_test_file(
-                self.args.test_driver, "Augmented", is_driver=True
-            )
+            logger = Logger(self.logs_output_dir + "/invfilter.log")
 
-            # Append the tests to the suite and driver (using final_tests)
-            appender = JavaTestApender()
-            appender.insert_tests_into_suite(new_test_suite_path, final_tests)
-            appender.insert_tests_into_driver(new_test_driver_path, final_tests)
+            if not final_tests:
+                logger.log(
+                    "No tests found in all_compiled_tests.java - skipping Daikon"
+                )
+                return
 
             # Prepare the augmented test driver name for Daikon
             augmented_test_driver_name = (
@@ -317,9 +312,28 @@ class Core:
 
             logger.log(f"Running dynamic invariant filtering for {self.subject_id}.")
             logger.log(f"Arguments: {self.args}")
+            logger.log(f"Found {len(final_tests)} tests to validate against")
 
-            self.compiler.compile_project()
-            logger.log("Project compiled successfully.")
+            # Clean first to remove any cached build artifacts
+            self.compiler.compile_project(clean=True)
+            logger.log("Project cleaned and compiled successfully.")
+
+            # Set up the suite and driver for append the generated tests
+            new_test_suite_path = JavaTestFileUpdater.prepare_test_file(
+                self.args.test_suite, "Augmented", is_driver=False
+            )
+            new_test_driver_path = JavaTestFileUpdater.prepare_test_file(
+                self.args.test_driver, "Augmented", is_driver=True
+            )
+
+            # Append the tests to the suite and driver (using final_tests)
+            appender = JavaTestApender()
+            appender.insert_tests_into_suite(new_test_suite_path, final_tests)
+            appender.insert_tests_into_driver(new_test_driver_path, final_tests)
+
+            # Compile again with the Augmented files
+            self.compiler.compile_project(clean=False)
+            logger.log("Augmented files compiled successfully.")
 
             daikon = Daikon(
                 subject,
