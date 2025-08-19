@@ -12,5 +12,7 @@ __pycache__/
 output/
 
 # Experiments
+experiments/GAssert
+experiments/GAssert.tar.gz
 experiments/results/
 experiments/run-example.sh
