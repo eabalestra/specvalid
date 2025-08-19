@@ -17,8 +17,18 @@ class JavaTestCompiler:
             return self._compile_test_with_build_tool(test)
         return self._compile_test_with_javac(test)
 
-    def compile_project(self) -> None:
+    def compile_project(self, clean: bool = False) -> None:
         try:
+            if clean:
+                # Clean first to remove any cached build artifacts
+                subprocess.run(
+                    ["./gradlew", "clean"],
+                    cwd=self.project_root,
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+            # Compile
             subprocess.run(
                 ["./gradlew", "compileJava", "compileTestJava"],
                 cwd=self.project_root,
