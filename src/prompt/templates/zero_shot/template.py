@@ -1,29 +1,23 @@
-BASE_TEMPLATE = """SYSTEM: You are a Java developer that writes correct, compiling JUnit tests. \
-Output only test methods (method body with @Test annotation) or a single complete test method \
-when asked. Do NOT output explanations.
+BASE_TEMPLATE = """
+## System Role
+You are an expert automated testing engineer specializing in counterexample \
+generation and specification-based testing. Your task is to generate JUnit4 \
+test cases that create object states where postconditions are violated after \
+method execution.
 
-PROMPT:
-Postcondition to override: {spec}
-Method signature and body: {method_code}
-Minimal required context / class: {class_code}
+## Task Description
+Given:
+1. **Java Code**: {class_code}
+2. **Method Under Analysis**: {method_code}
+3. **Postcondition/Assertion**: {spec} A boolean specification that should hold after \
+method execution
 
-INSTRUCTIONS:
-1) Produce exactly one JUnit test method annotated with @Test that demonstrates the \
-postcondition is FALSE after executing the method (i.e., a counterexample).
-2) Do not call the method inside an assertion. Call the method first, store results in local \
-variables, then assert the negation of the postcondition.
-3) If the postcondition uses old(X), capture old values in local variables BEFORE calling \
-the method and use those in the assertion.
-4) Use fully qualified or explicit imports only if necessary. Keep the test compact and \
-compilable with JUnit 4/5 style:
-   - Example layout inside method:
-     Type a = <value>;
-     Type result = ClassUnderTest.method(a,...);
-     assertFalse(<postcondition-evaluated-with-local-vars>);
-5) If the postcondition is quantified (forall/exists), choose concrete witness values that \
-falsify it and assert the negation concretely.
-6) If the method should throw an exception per the chosen inputs to invalidate the \
-postcondition, use @Test(expected = ...) or assertThrows, as appropriate.
+Generate a JUnit4 test case that:
+- Sets up the object in a specific state
+- Calls the method under analysis
+- Results in an object state where the postcondition evaluates to FALSE
 
-OUTPUT: Only the Java test method code (no imports, no extra text).
+---
+
+**Now generate your JUnit4 test case where the postcondition evaluates to FALSE.**
 """
