@@ -3,7 +3,6 @@ import subprocess
 from daikon.daikon import Daikon
 from file_operations.file_ops import FileOperations
 from java_test_appender.java_test_appender import JavaTestApender
-from java_test_compiler.java_build_tool_compiler import JavaTestCompilationException
 from java_test_compiler.java_test_compiler import JavaTestCompiler
 from java_test_driver.java_test_driver import JavaTestDriver
 from java_test_file_updater.java_test_file_updater import JavaTestFileUpdater
@@ -15,6 +14,7 @@ from prompt.prompt_template import PromptID
 from services.java_llmtesgen_service import JavaLLMTestGenService
 from subject.subject import Subject
 from testgen.java_test_generator import JavaTestGenerator
+from testgen.model_test_processor import ModelTestProcessor
 
 import os
 
@@ -102,7 +102,6 @@ class Core:
             java_class_src = args.target_class_src
             method = args.method
             java_test_suite = args.test_suite
-            java_test_driver = args.test_driver
             spec_file = args.buckets_assertions_file
 
             class_name = os.path.basename(java_class_src).replace(".java", "")
@@ -133,7 +132,7 @@ class Core:
                 generated_test_suite,
                 generated_test_driver,
             )
-            java_test_generator = JavaTestGenerator(subject)
+            java_test_generator = JavaTestGenerator(subject, logger)
 
             # Service for test generation
             testgen_service = JavaLLMTestGenService(
@@ -146,64 +145,130 @@ class Core:
             )
             prompt_IDs = select_prompts(args.prompts_list)
 
+            # TODO: TEMPORAL: Use pre-generated tests from SuiteForTesting.java instead of LLM
+            # This is only for testing purposes - comment out for normal operation
+            # suite_for_testing_path = "tests/SuiteForTesting.java"
+            # if os.path.exists(suite_for_testing_path):
+            #     logger.log(
+            #         "TEMPORAL: Using pre-generated tests from SuiteForTesting.java"
+            #     )
+            #     with open(suite_for_testing_path, "r") as f:
+            #         test_content = f.read()
+
+            #     # Extract individual test methods from the file
+            #     import re
+
+            #     pattern = (
+            #         r"@Test\s+public\s+void\s+\w+\([^)]*\)\s*throws[^{]*\{"
+            #         r"(?:[^{}]|\{[^{}]*\})*\}"
+            #     )
+            #     test_methods = re.findall(
+            #         pattern, test_content, re.MULTILINE | re.DOTALL
+            #     )
+
+            #     # Add tests to the test suite using a fake model name
+            #     fake_model = "pre-generated-tests"
+            #     for test_method in test_methods:
+            #         subject.test_suite.add_test_by_model(
+            #             fake_model, test_method.strip()
+            #         )
+
+            #     logger.log(f"TEMPORAL: Loaded {len(test_methods)} pre-generated tests")
+
             # Run test generation using LLM's
             testgen_service.run(prompts=prompt_IDs, models=models)
-            subject.test_suite.write_test_suite(
-                os.path.join(subject_output_testgen_dir, f"{subject_id}LlmTest.java")
+
+            # Write generated test suite (original approach)
+            # subject.test_suite.write_test_suite(
+            #     os.path.join(subject_output_testgen_dir, f"{subject_id}LlmTest.java")
+            # )
+
+            # NEW: Write separate files by model - RAW phase
+            subject.test_suite.write_test_suites_by_model(
+                subject_output_testgen_dir, "raw"
             )
 
-            # TODO: uncomment this for testing
-            # subject.test_suite.test_list = JavaTestSuite.extract_tests_from_file(
-            #     "tests/suite_for_testing.java"
-            # )
+            # Log model statistics
+            for model_id in subject.test_suite.get_all_models():
+                model_tests = subject.test_suite.get_tests_by_model(model_id)
+                logger.log(f"Model {model_id} generated {len(model_tests)} tests")
 
             logger.log(
                 f"Processing {len(subject.test_suite.test_list)} tests for {subject_id}."
             )
 
-            # Fix the generated test suite
-            fixed_test_cases = subject.test_suite.repair_java_tests()
-            fixed_tests_summary = "\n\n".join(fixed_test_cases)
+            # NEW: Process tests by model through all phases
+            model_processor = ModelTestProcessor(logger, java_class_src)
+            model_stats = model_processor.process_tests_by_model(
+                subject.test_suite, subject_output_testgen_dir
+            )
+
+            # Generate model comparison report
+            model_processor.generate_model_comparison_report(
+                model_stats, subject_output_testgen_dir
+            )
+
+            # Log detailed model statistics
+            for model_id, stats in model_stats.items():
+                raw_count = stats["raw"]["count"]
+                compiled_count = stats["compiled"]["count"]
+                success_rate = compiled_count / raw_count * 100 if raw_count > 0 else 0
+                logger.log(
+                    f"Model {model_id}: {raw_count} raw -> {compiled_count} compiled "
+                    f"({success_rate:.1f}% success)"
+                )
+
+            # Fix the generated test suite (original approach)
+            # fixed_test_cases = subject.test_suite.repair_java_tests()
+            # fixed_tests_summary = "\n\n".join(fixed_test_cases)
+            # FileOperations.write_file(
+            #     os.path.join(
+            #         subject_output_testgen_dir, f"{subject_id}LlmFixedTest.java"
+            #     ),
+            #     fixed_tests_summary,
+            # )
+
+            # Discard tests that cannot be compiled (original approach)
+            # compiler = JavaTestCompiler(java_class_src)
+            # compiled_test_cases = []
+            # for test in fixed_test_cases:
+            #     try:
+            #         compiler.compile(test, with_tool=True)
+            #         compiled_test_cases.append(test)
+            #     except JavaTestCompilationException as e:
+            #         logger.log_warning(f"Test discarded - Compilation error:\n{e}")
+
+            aggregated_compiled_tests = (
+                subject.test_suite.get_all_compiled_tests_by_model(model_stats)
+            )
+
+            # Write both original and aggregated versions
+            # compiled_tests_summary = "\n\n".join(compiled_test_cases)
+            # FileOperations.write_file(
+            #     os.path.join(
+            #         subject_output_testgen_dir, f"{subject_id}LlmCompilableTest.java"
+            #     ),
+            #     compiled_tests_summary,
+            # )
+
+            # Write aggregated compiled tests (NEW - this will be used for Daikon)
+            aggregated_compiled_summary = "\n\n".join(aggregated_compiled_tests)
+
             FileOperations.write_file(
-                os.path.join(
-                    subject_output_testgen_dir, f"{subject_id}LlmFixedTest.java"
-                ),
-                fixed_tests_summary,
+                os.path.join(subject_output_testgen_dir, "all_compiled_tests.java"),
+                aggregated_compiled_summary,
             )
 
-            # Discard tests that cannot be compiled
-            compiler = JavaTestCompiler(java_class_src)
-            compiled_test_cases = []
-            for test in fixed_test_cases:
-                try:
-                    compiler.compile(test, with_tool=True)
-                    compiled_test_cases.append(test)
-                except JavaTestCompilationException as e:
-                    logger.log_warning(f"Test discarded - Compilation error:\n{e}")
+            # logger.log(f"Original approach: Compiled {len(compiled_test_cases)}
+            # tests.")
+            # logger.log(
+            #     f"New approach: Aggregated {len(aggregated_compiled_tests)} "
+            #     f"compiled tests from all models."
+            # )
 
-            compiled_tests_summary = "\n\n".join(compiled_test_cases)
-            FileOperations.write_file(
-                os.path.join(
-                    subject_output_testgen_dir, f"{subject_id}LlmCompilableTest.java"
-                ),
-                compiled_tests_summary,
-            )
-
-            logger.log(f"Compiled {len(compiled_test_cases)} tests successfully.")
-
-            # Set up the suite and driver for append the generated tests
-            new_test_suite_path = JavaTestFileUpdater.prepare_test_file(
-                java_test_suite, "Augmented", is_driver=False
-            )
-            new_test_driver_path = JavaTestFileUpdater.prepare_test_file(
-                java_test_driver, "Augmented", is_driver=True
-            )
-
-            # Append the tests to the suite and driver
-            appender = JavaTestApender()
-            appender.insert_tests_into_suite(new_test_suite_path, compiled_test_cases)
-            appender.insert_tests_into_driver(new_test_driver_path, compiled_test_cases)
-
+            # Do not remove this line:
+            #   it is used to read the logs and analyze the results
+            logger.log(f"Compiled {len(aggregated_compiled_tests)} tests successfully.")
             logger.log("> Test generation completed successfully.")
         except Exception as e:
             print(f"❌ Error: {e}")
@@ -212,6 +277,23 @@ class Core:
     def run_invariant_filter(self):
         try:
             subject = self.subject
+
+            final_tests = JavaTestSuite.extract_tests_from_file(
+                f"{self.output_dir}/test/all_compiled_tests.java"
+            )
+
+            # Set up the suite and driver for append the generated tests
+            new_test_suite_path = JavaTestFileUpdater.prepare_test_file(
+                self.args.test_suite, "Augmented", is_driver=False
+            )
+            new_test_driver_path = JavaTestFileUpdater.prepare_test_file(
+                self.args.test_driver, "Augmented", is_driver=True
+            )
+
+            # Append the tests to the suite and driver (using final_tests)
+            appender = JavaTestApender()
+            appender.insert_tests_into_suite(new_test_suite_path, final_tests)
+            appender.insert_tests_into_driver(new_test_driver_path, final_tests)
 
             # Prepare the augmented test driver name for Daikon
             augmented_test_driver_name = (
@@ -253,7 +335,8 @@ class Core:
             daikon.run_dyn_comp()
 
             logger.log(
-                f"Run Chicory DTrace generation from driver: {augmented_test_driver_name}"
+                f"Run Chicory DTrace generation from driver: "
+                f"{augmented_test_driver_name}"
             )
             daikon.run_chicory_dtrace_generation()
 
