@@ -62,3 +62,6 @@ if [ -f experiments/daikon-5.8.2.zip ]; then
 else
     echo "experiments/daikon-5.8.2.zip not found; skipping unzip."
 fi
+
+# Install package
+pip install .
