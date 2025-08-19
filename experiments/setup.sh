@@ -62,4 +62,4 @@ else
 fi
 
 # Install package
-pip install .
+pip install -e .
