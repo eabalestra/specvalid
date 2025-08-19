@@ -11,10 +11,14 @@ pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
 
 # Variables (adjust if necessary)
-export DAIKONDIR=/workspace/daikon-5.8.2
-export GASSERT_DIR=/workspace/GAssert
-export SPECS_DIR=/workspace/specfuzzer-subject-results
-export SPECVALID_DIR=/workspace/specvalid
+DAIKONDIR="$(pwd)/experiments/daikon-5.8.2"
+export DAIKONDIR
+GASSERT_DIR="$(pwd)/experiments/GAssert"
+export GASSERT_DIR
+SPECS_DIR="$(pwd)/experiments/specfuzzer-subject-results"
+export SPECS_DIR
+SPECVALID_DIR="$(pwd)/experiments/specvalid"
+export SPECVALID_DIR
 
 # Create parent directories if they don't exist
 mkdir -p "$(dirname "$SPECS_DIR")" experiments
