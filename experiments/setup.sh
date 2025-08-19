@@ -38,7 +38,20 @@ tar -xzf experiments/GAssert.tar.gz -C experiments/
 
 # Download Daikon (use megatools/megadl if available, otherwise warn)
 if command -v megadl >/dev/null 2>&1; then
-    megadl 'https://mega.nz/file/pPgmnCST#dObECd8W5VeIDz5xzSgeQnhmH_-BRnOzt1VKaGn7Ihg' -o experiments/daikon-5.8.2.zip
+    echo "Downloading Daikon with megadl..."
+    # Some megadl versions don't support an -o/--output option; download to CWD and move the produced file.
+    megadl 'https://mega.nz/file/pPgmnCST#dObECd8W5VeIDz5xzSgeQnhmH_-BRnOzt1VKaGn7Ihg' || echo "megadl returned non-zero status"
+    # Try to find the most recent daikon zip (or any zip) and move it into experiments/ with a stable name.
+    ZIP_FILE=$(ls -1t daikon-*.zip 2>/dev/null | head -n1 || true)
+    if [ -z "$ZIP_FILE" ]; then
+        ZIP_FILE=$(ls -1t *.zip 2>/dev/null | head -n1 || true)
+    fi
+    if [ -n "$ZIP_FILE" ]; then
+        mkdir -p experiments
+        mv -f "$ZIP_FILE" experiments/daikon-5.8.2.zip
+    else
+        echo "megadl did not produce a .zip file; please download manually: https://mega.nz/file/pPgmnCST"
+    fi
 else
     echo "Warning: 'megadl' is not installed. Manual download required: https://mega.nz/file/pPgmnCST"
 fi
