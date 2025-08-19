@@ -17,8 +17,6 @@ GASSERT_DIR="$(pwd)/experiments/GAssert"
 export GASSERT_DIR
 SPECS_DIR="$(pwd)/experiments/specfuzzer-subject-results"
 export SPECS_DIR
-SPECVALID_DIR="$(pwd)/experiments/specvalid"
-export SPECVALID_DIR
 
 # Create parent directories if they don't exist
 mkdir -p "$(dirname "$SPECS_DIR")" experiments
