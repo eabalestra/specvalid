@@ -18,7 +18,7 @@ class JavaTestFixer:
     def repair_java_test(self, test_code: str) -> str:
         if test_code.strip() == "":
             return test_code
-        test = self._add_throws_signature_(test_code)
+        test = self._add_throws_signature(test_code)
         test = self._replace_class_references(test)
         return self._add_test_annotation(test)
 
@@ -28,7 +28,7 @@ class JavaTestFixer:
             test_code = f"@Test\n{test_code}"
         return test_code
 
-    def _add_throws_signature_(self, test_code: str) -> str:
+    def _add_throws_signature(self, test_code: str) -> str:
         pattern = r"(public void \w+\(\))\s*(?:throws\s+[^\\{]*)?\s*\{"
         replacement = r"\1 throws Throwable {"
         return re.sub(pattern, replacement, test_code)
@@ -41,3 +41,41 @@ class JavaTestFixer:
             pattern = re.compile(rf"(?<![\w\.]){re.escape(file_name)}(?![\w\.])")
             test_code = pattern.sub(full_name, test_code)
         return test_code
+
+    @staticmethod
+    def _remove_assert_wrappers(test: str) -> str:
+        # Remove assertion wrappers for different types of assertions
+        patterns_to_remove = [
+            # JUnit assertions with message parameter (first argument is message)
+            (
+                r"\b(assertTrue|assertFalse)\s*\("
+                r"\s*\"[^\"]*\"\s*,\s*(.*?)\s*\)\s*;",
+                r"\2;",
+            ),
+            (
+                r"\b(assertEquals|assertNotEquals)\s*\("
+                r"\s*\"[^\"]*\"\s*,\s*[^,]+\s*,\s*(.*?)\s*\)\s*;",
+                r"\2;",
+            ),
+            # JUnit assertions with single argument (assertTrue, assertFalse)
+            (r"\b(assertTrue|assertFalse)\s*\(\s*(.*?)\s*\)\s*;", r"\2;"),
+            # JUnit assertions with two arguments (assertEquals, assertNotEquals, etc.)
+            (
+                r"\b(assertEquals|assertNotEquals|assertSame|assertNotSame|"
+                r"assertArrayEquals)\s*\(\s*[^,]+\s*,\s*(.*?)\s*\)\s*;",
+                r"\2;",
+            ),
+            # assertThat statements (Hamcrest/AssertJ style)
+            (r"\b(assertThat)\s*\(\s*(.*?)\s*,\s*.*?\)\s*;", r"\2;"),
+            # fail statements with message
+            (r"\b(fail)\s*\(\s*\"[^\"]*\"\s*\)\s*;", r"// fail removed;"),
+            # fail statements without message
+            (r"\b(fail)\s*\(\s*\)\s*;", r"// fail removed;"),
+        ]
+
+        result = test
+        for pattern, replacement in patterns_to_remove:
+            compiled_pattern = re.compile(pattern, re.DOTALL)
+            result = compiled_pattern.sub(replacement, result)
+
+        return result

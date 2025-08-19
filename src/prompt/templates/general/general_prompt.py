@@ -1,5 +1,6 @@
 from prompt.prompt_template import Prompt
-from .template import BASE_TEMPLATE
+from prompt.templates.general.template import BASE_TEMPLATE
+
 
 TEST_SECTION_TEMPLATE = """
 [[CODE]]

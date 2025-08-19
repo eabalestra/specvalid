@@ -27,6 +27,11 @@ class Subject:
         self.test_suite = java_test_suite
         self.test_driver = java_test_driver
         self.root_dir = self._find_project_root()
+        self.class_name = self.class_path_src.stem
+        self.method_sig = JavaCodeExtractor.extract_method_signature(self.method_code)
+        self.other_method_sigs = JavaCodeExtractor.extract_other_method_signatures(
+            self.class_code
+        )
 
     def collect_specs(self) -> set:
         return self.specs.parse_and_collect_specs()
