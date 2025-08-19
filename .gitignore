@@ -11,4 +11,6 @@ __pycache__/
 # SpecValid output
 output/
 
+# Experiments
 experiments/results/
+experiments/run-example.sh
