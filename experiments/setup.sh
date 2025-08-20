@@ -173,6 +173,7 @@ setup_daikon() {
         echo "Please install megatools package:"
         echo "  Ubuntu/Debian: sudo apt-get install megatools"
         echo "  Or download manually from: https://mega.nz/file/pPgmnCST#dObECd8W5VeIDz5xzSgeQnhmH_-BRnOzt1VKaGn7Ihg"
+        echo "  Please place the downloaded file (for example 'daikon-5.8.2.zip') into the 'experiments/' directory and re-run this script."
         return 1
     fi
     
