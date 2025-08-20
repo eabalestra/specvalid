@@ -19,3 +19,5 @@ experiments/specfuzzer-subject-results/
 experiments/daikon-5.8.2.zip
 experiments/daikon-5.8.2/
 experiments/run-example.sh
+
+src/specvalid.egg-info
