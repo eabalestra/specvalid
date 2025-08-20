@@ -252,12 +252,12 @@ def main():
     subjects = read_subjects_file(subjects_file)
     total_subjects = len(subjects)
 
-    print("> Running experiment pipeline with the following configuration:")
-    print(f"Models: {args.models}")
-    print(f"Prompts: {args.prompts}")
-    print(f"Subjects file: {subjects_file}")
-    print(f"Total subjects to process: {total_subjects}")
-    print("")
+    # print("> Running experiment pipeline with the following configuration:")
+    # print(f"Models: {args.models}")
+    # print(f"Prompts: {args.prompts}")
+    # print(f"Subjects file: {subjects_file}")
+    # print(f"Total subjects to process: {total_subjects}")
+    # print("")
 
     successful_runs = 0
     failed_runs = 0
