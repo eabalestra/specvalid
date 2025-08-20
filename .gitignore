@@ -20,4 +20,8 @@ experiments/daikon-5.8.2.zip
 experiments/daikon-5.8.2/
 experiments/run-example.sh
 
+# Egg-info directory
 src/specvalid.egg-info
+
+# TO DO
+TODO.md
