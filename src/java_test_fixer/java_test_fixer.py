@@ -29,7 +29,7 @@ class JavaTestFixer:
         return test_code
 
     def _add_throws_signature(self, test_code: str) -> str:
-        pattern = r"(public void \w+\(\))\s*(?:throws\s+[^\\{]*)?\s*\{"
+        pattern = r"((public\s+)?void \w+\(\))\s*(?:throws\s+[^\\{]*)?\s*\{"
         replacement = r"\1 throws Throwable {"
         return re.sub(pattern, replacement, test_code)
 
