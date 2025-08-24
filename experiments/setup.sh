@@ -182,6 +182,8 @@ setup_daikon() {
         "megadl" \
         "unzip -o" \
         "$DAIKONDIR"
+
+    make -C "$DAIKONDIR/java" dcomp_rt.jar
 }
 
 setup_daikon
