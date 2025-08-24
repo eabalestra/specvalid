@@ -42,8 +42,7 @@ if len(sys.argv) > 3:
     class_name = sys.argv[3]
     method_name = sys.argv[4]
 
-    AUTOMATIC_IF_OUTPUT_DIR = "output"
-    output_directory = f"{AUTOMATIC_IF_OUTPUT_DIR}/{class_name}_{method_name}/specs"
+    output_directory = sys.argv[5]
     os.makedirs(output_directory, exist_ok=True)
 
     output_file = (
