@@ -275,20 +275,56 @@ class Core:
             exit(1)
 
     def run_invariant_filter(self):
+        subject = self.subject
+        logger = Logger(self.logs_output_dir + "/invfilter.log")
+        logger.log(f"Running dynamic invariant filtering for {self.subject_id}.")
+        logger.log(f"Arguments: {self.args}")
+
+        models_dir = f"{self.output_dir}/test/by_model"
+
+        available_models = []
+        for model_name in os.listdir(models_dir):
+            model_dir = os.path.join(models_dir, model_name)
+            compiled_tests_file = os.path.join(model_dir, "compiled_tests.java")
+            if os.path.exists(compiled_tests_file):
+                available_models.append(model_name)
+
+        if not available_models:
+            logger.log_error("No models with compiled tests found - skipping Daikon")
+            return
+
+        logger.log(
+            f"Found {len(available_models)} models with compiled tests: "
+            f"{available_models}"
+        )
+
+        for model in available_models:
+            logger.log(f"Running invariant filtering for tests from model: {model}")
+            self._process_model_invariant_filter(model, subject, logger)
+
+    def _process_model_invariant_filter(self, model_id, subject, logger):
         try:
-            subject = self.subject
+            model_output_dir = f"{self.output_dir}/test/by_model/{model_id}"
 
             final_tests = JavaTestSuite.extract_tests_from_file(
-                f"{self.output_dir}/test/all_compiled_tests.java"
+                f"{model_output_dir}/compiled_tests.java"
             )
-
-            logger = Logger(self.logs_output_dir + "/invfilter.log")
 
             if not final_tests:
                 logger.log(
                     "No tests found in all_compiled_tests.java - skipping Daikon"
                 )
                 return
+
+            logger.log(f"Found {len(final_tests)} tests to validate against")
+
+            renamed_tests = subject.test_suite._rename_test_methods(
+                final_tests, "llmTest"
+            )
+
+            # Create model-specific directories
+            model_daikon_dir = _init_subdirectory(model_output_dir, "daikon")
+            model_specs_dir = _init_subdirectory(model_output_dir, "specs")
 
             # Prepare the augmented test driver name for Daikon
             augmented_test_driver_name = (
@@ -300,19 +336,6 @@ class Core:
                 + "."
                 + augmented_test_driver_name
             )
-
-            subject_output_dir = _create_subject_output_directory(self.subject_id)
-
-            # Set up output directory for the subject
-            subject_daikon_output_dir = _init_subdirectory(subject_output_dir, "daikon")
-            subject_specs_output_dir = _init_subdirectory(subject_output_dir, "specs")
-
-            # Setup logging
-            logger = Logger(self.logs_output_dir + "/invfilter.log")
-
-            logger.log(f"Running dynamic invariant filtering for {self.subject_id}.")
-            logger.log(f"Arguments: {self.args}")
-            logger.log(f"Found {len(final_tests)} tests to validate against")
 
             # Clean first to remove any cached build artifacts
             self.compiler.compile_project(clean=True)
@@ -326,10 +349,10 @@ class Core:
                 self.args.test_driver, "Augmented", is_driver=True
             )
 
-            # Append the tests to the suite and driver (using final_tests)
+            # Append the tests to the suite and driver
             appender = JavaTestApender()
-            appender.insert_tests_into_suite(new_test_suite_path, final_tests)
-            appender.insert_tests_into_driver(new_test_driver_path, final_tests)
+            appender.insert_tests_into_suite(new_test_suite_path, renamed_tests)
+            appender.insert_tests_into_driver(new_test_driver_path, renamed_tests)
 
             # Compile again with the Augmented files
             self.compiler.compile_project(clean=False)
@@ -339,7 +362,7 @@ class Core:
                 subject,
                 augmented_test_driver_name,
                 augmented_test_driver_fq_name,
-                subject_daikon_output_dir,
+                model_daikon_dir,
             )
 
             logger.log(
@@ -357,8 +380,8 @@ class Core:
             logger.log(
                 f"Run Daikon Invariant Checker from driver: {augmented_test_driver_name}"
             )
+
             invalid_invs = daikon.run_invariant_checker(self.args.specfuzzer_invs_file)
-            invalid_invs = f"{subject_daikon_output_dir}/invs.csv"
 
             # Build fully-qualified class name relative to src/main/java
             full_qualified_class_name = self.args.target_class_src.replace("\\", "/")
@@ -378,6 +401,7 @@ class Core:
                 invalid_invs,
                 full_qualified_class_name,
                 self.args.method,
+                model_specs_dir,
             ]
             result = subprocess.run(cmd, capture_output=True, text=True)
             logger.log(result.stdout)
@@ -386,9 +410,10 @@ class Core:
                 "python3",
                 "scripts/extract_non_filtered_assertions.py",
                 self.args.specfuzzer_assertions_file,
-                f"{subject_specs_output_dir}/interest-specs.csv",
+                f"{model_specs_dir}/interest-specs.csv",
                 self.class_name,
                 self.args.method,
+                model_specs_dir,
             ]
             result = subprocess.run(cmd, capture_output=True, text=True)
             logger.log(result.stdout)
