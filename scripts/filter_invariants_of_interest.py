@@ -5,7 +5,7 @@ SPECVALID_OUTPUT_DIR = "output"
 
 specs_file = sys.argv[1]
 full_qualifier = sys.argv[2]
-class_name = full_qualifier.split(".")[1]
+class_name = full_qualifier.split(".")[-1]
 method_name = sys.argv[3]
 output_directory = sys.argv[4]
 
