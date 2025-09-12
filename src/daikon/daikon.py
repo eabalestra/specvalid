@@ -40,24 +40,31 @@ class Daikon:
     def run_chicory_dtrace_generation(self):
         self.objs_file = f"{self.output_dir}/{self.test_driver}-objects.xml"
         cmp_file = f"{self.output_dir}/{self.test_driver}.decls-DynComp"
+        cmd = [
+            "java",
+            "-cp",
+            self.cp_for_daikon,
+            "daikon.Chicory",
+            "--output-dir",
+            self.output_dir,
+            "--comparability-file",
+            cmp_file,
+            "--ppt-omit-pattern",
+            f"{self.test_driver}.*",
+            self.test_driver_fq_name,
+            self.objs_file,
+        ]
         try:
-            cmd = [
-                "java",
-                "-cp",
-                self.cp_for_daikon,
-                "daikon.Chicory",
-                "--output-dir",
-                self.output_dir,
-                "--comparability-file",
-                cmp_file,
-                "--ppt-omit-pattern",
-                f"{self.test_driver}.*",
-                self.test_driver_fq_name,
-                self.objs_file,
-            ]
-            subprocess.run(cmd, check=True)
+            subprocess.run(cmd, check=True, capture_output=True, text=True)
         except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"Error running Chicory DTrace generation: {e}")
+            error_msg = "Error running Chicory DTrace generation.\n"
+            error_msg += f"Command: {' '.join(cmd)}\n"
+            error_msg += f"Return code: {e.returncode}\n"
+            if e.stdout:
+                error_msg += f"Stdout: {e.stdout}\n"
+            if e.stderr:
+                error_msg += f"Stderr: {e.stderr}\n"
+            raise RuntimeError(error_msg)
 
     def run_invariant_checker(self, inv_gz_file: str) -> str:
         dtrace_file = f"{self.output_dir}/{self.test_driver}.dtrace.gz"
