@@ -299,6 +299,7 @@ class Core:
         )
 
         for model in available_models:
+            print(f"> Running invariant filtering for tests from model: {model}")
             logger.log(f"Running invariant filtering for tests from model: {model}")
             self._process_model_invariant_filter(model, subject, logger)
 
@@ -418,5 +419,6 @@ class Core:
             result = subprocess.run(cmd, capture_output=True, text=True)
             logger.log(result.stdout)
         except Exception as e:
-            print(f"❌ Error: {e}")
-            exit(1)
+            logger.log_error(f"Error during invariant filtering: {e}")
+            print(f"❌ Error during invariant filtering: {e}")
+            return
