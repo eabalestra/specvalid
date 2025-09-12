@@ -79,12 +79,13 @@ def main():
             return
 
     core = Core(args)
+    print(f"> Running Specvalid for subject: {core.subject_id}")
     if args.command == "testgen":
+        print("> Running test generation")
         core.run_testgen(args)
         if args.no_invs_filtering:
             print("> Second validation skipped due to --no-invs-filtering flag")
         else:
-            print("> Running filtering")
             core.run_invariant_filter()
     elif args.command == "mutgen":
         raise NotImplementedError("Mutgen functionality is not implemented yet.")
