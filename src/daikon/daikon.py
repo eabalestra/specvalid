@@ -19,7 +19,9 @@ class Daikon:
         build_libs = f"{subject.root_dir}/build/libs/*"
         self.subject_cp = f"{main_classes}:{test_classes}:{build_libs}"
 
-        self.cp_for_daikon = f"libs/*:{self.subject_cp}"
+        # Include both project-specific libs and global libs in classpath
+        project_libs = f"{subject.root_dir}/libs/*"
+        self.cp_for_daikon = f"{project_libs}:libs/*:{self.subject_cp}"
 
     def run_dyn_comp(self) -> None:
         open(f"{self.output_dir}/{self.test_driver}.decls-DynComp", "w").close()
