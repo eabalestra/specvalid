@@ -32,6 +32,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Skip the Daikon invariants filtering step.",
         required=False,
     )
+    testgen.add_argument(
+        "--reuse-tests",
+        dest="reuse_tests",
+        action="store_true",
+        help="Reuse existing raw tests if available instead of generating new ones.",
+        required=False,
+    )
     testgen.add_argument("target_class_src")
     testgen.add_argument("test_suite")
     testgen.add_argument("test_driver")

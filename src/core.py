@@ -72,9 +72,11 @@ def _create_subject_output_directory(subject_id):
     return subject_output_dir
 
 
-def _init_subdirectory(subject_output_dir, subdir_name: str):
+def _init_subdirectory(
+    subject_output_dir, subdir_name: str, preserve_existing: bool = False
+):
     subdir = os.path.join(subject_output_dir, subdir_name)
-    if os.path.exists(subdir):
+    if os.path.exists(subdir) and not preserve_existing:
         shutil.rmtree(subdir)
     os.makedirs(subdir, exist_ok=True)
     return subdir
@@ -94,7 +96,9 @@ class Core:
         )
         self.compiler = JavaTestCompiler(args.target_class_src)
         self.output_dir = _create_subject_output_directory(self.subject_id)
-        self.logs_output_dir = _init_subdirectory(self.output_dir, "logs")
+        self.logs_output_dir = _init_subdirectory(
+            self.output_dir, "logs", preserve_existing=True
+        )
 
     def run_testgen(self, args):
         try:
@@ -109,7 +113,9 @@ class Core:
 
             # Set up output directory for the subject
             subject_output_dir = _create_subject_output_directory(subject_id)
-            subject_output_testgen_dir = _init_subdirectory(subject_output_dir, "test")
+            subject_output_testgen_dir = _init_subdirectory(
+                subject_output_dir, "test", preserve_existing=args.reuse_tests
+            )
 
             # Setup logging
             logger = Logger(self.logs_output_dir + "/testgen.log")
@@ -175,8 +181,22 @@ class Core:
 
             #     logger.log(f"TEMPORAL: Loaded {len(test_methods)} pre-generated tests")
 
-            # Run test generation using LLM's
-            testgen_service.run(prompts=prompt_IDs, models=models)
+            # Check if we should reuse existing raw tests
+            if args.reuse_tests:
+                existing_tests_loaded = self._load_existing_raw_tests(
+                    subject_output_testgen_dir, subject, logger
+                )
+
+                if not existing_tests_loaded:
+                    # Run test generation using LLM's
+                    logger.log("No existing raw tests found. Generating new tests...")
+                    testgen_service.run(prompts=prompt_IDs, models=models)
+                else:
+                    logger.log("Reusing existing raw tests. Skipping LLM generation.")
+            else:
+                # Always run test generation using LLM's
+                logger.log("Generating tests with LLMs...")
+                testgen_service.run(prompts=prompt_IDs, models=models)
 
             # Write generated test suite (original approach)
             # subject.test_suite.write_test_suite(
@@ -422,3 +442,52 @@ class Core:
             logger.log_error(f"Error during invariant filtering: {e}")
             print(f"❌ Error during invariant filtering: {e}")
             return
+
+    def _load_existing_raw_tests(self, output_dir: str, subject, logger) -> bool:
+        """
+        Load existing raw tests from by_model directory if they exist.
+        Returns True if tests were loaded, False otherwise.
+        """
+        by_model_dir = os.path.join(output_dir, "by_model")
+
+        if not os.path.exists(by_model_dir):
+            return False
+
+        models_loaded = 0
+        total_tests_loaded = 0
+
+        for model_name in os.listdir(by_model_dir):
+            model_dir = os.path.join(by_model_dir, model_name)
+            raw_tests_file = os.path.join(model_dir, "raw_tests.java")
+
+            if os.path.exists(raw_tests_file):
+                try:
+                    # Extract tests from the raw_tests.java file
+                    from java_test_suite.java_test_suite import JavaTestSuite
+
+                    raw_tests = JavaTestSuite.extract_tests_from_file(raw_tests_file)
+
+                    if raw_tests:
+                        # Add tests to the test suite by model
+                        for test in raw_tests:
+                            subject.test_suite.add_test_by_model(model_name, test)
+
+                        models_loaded += 1
+                        total_tests_loaded += len(raw_tests)
+                        logger.log(
+                            f"Loaded {len(raw_tests)} raw tests from model: {model_name}"
+                        )
+
+                except Exception as e:
+                    logger.log_warning(
+                        f"Failed to load raw tests from {model_name}: {e}"
+                    )
+
+        if models_loaded > 0:
+            logger.log(
+                f"Successfully loaded {total_tests_loaded} raw tests "
+                f"from {models_loaded} models"
+            )
+            return True
+        else:
+            return False
