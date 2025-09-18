@@ -38,7 +38,9 @@ class JavaTestFixer:
             file_name = os.path.splitext(os.path.basename(file_path))[0]
             prefix = f"{self.class_package}." if self.class_package else ""
             full_name = f"{prefix}{file_name}"
-            pattern = re.compile(rf"(?<![\w\.]){re.escape(file_name)}(?![\w\.])")
+            # TODO: Modified pattern: allow class name followed by dot (for method calls)
+            # but not preceded by word characters or dots
+            pattern = re.compile(rf"(?<![\w\.]){re.escape(file_name)}(?=\.|\s|$)")
             test_code = pattern.sub(full_name, test_code)
         return test_code
 
