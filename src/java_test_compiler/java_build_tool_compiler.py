@@ -92,3 +92,8 @@ class JavaBuildToolCompiler:
         gradle_dir = self.project_root / "gradle"
         if gradle_dir.exists():
             shutil.copytree(gradle_dir, target_dir / "gradle")
+
+        # Copy libs directory if it exists (for local JAR dependencies)
+        libs_dir = self.project_root / "libs"
+        if libs_dir.exists():
+            shutil.copytree(libs_dir, target_dir / "libs")
