@@ -151,36 +151,6 @@ class Core:
             )
             prompt_IDs = select_prompts(args.prompts_list)
 
-            # TODO: TEMPORAL: Use pre-generated tests from SuiteForTesting.java instead of LLM
-            # This is only for testing purposes - comment out for normal operation
-            # suite_for_testing_path = "tests/SuiteForTesting.java"
-            # if os.path.exists(suite_for_testing_path):
-            #     logger.log(
-            #         "TEMPORAL: Using pre-generated tests from SuiteForTesting.java"
-            #     )
-            #     with open(suite_for_testing_path, "r") as f:
-            #         test_content = f.read()
-
-            #     # Extract individual test methods from the file
-            #     import re
-
-            #     pattern = (
-            #         r"@Test\s+public\s+void\s+\w+\([^)]*\)\s*throws[^{]*\{"
-            #         r"(?:[^{}]|\{[^{}]*\})*\}"
-            #     )
-            #     test_methods = re.findall(
-            #         pattern, test_content, re.MULTILINE | re.DOTALL
-            #     )
-
-            #     # Add tests to the test suite using a fake model name
-            #     fake_model = "pre-generated-tests"
-            #     for test_method in test_methods:
-            #         subject.test_suite.add_test_by_model(
-            #             fake_model, test_method.strip()
-            #         )
-
-            #     logger.log(f"TEMPORAL: Loaded {len(test_methods)} pre-generated tests")
-
             # Check if we should reuse existing raw tests
             if args.reuse_tests:
                 existing_tests_loaded = self._load_existing_raw_tests(
@@ -198,17 +168,10 @@ class Core:
                 logger.log("Generating tests with LLMs...")
                 testgen_service.run(prompts=prompt_IDs, models=models)
 
-            # Write generated test suite (original approach)
-            # subject.test_suite.write_test_suite(
-            #     os.path.join(subject_output_testgen_dir, f"{subject_id}LlmTest.java")
-            # )
-
-            # NEW: Write separate files by model - RAW phase
             subject.test_suite.write_test_suites_by_model(
                 subject_output_testgen_dir, "raw"
             )
 
-            # Log model statistics
             for model_id in subject.test_suite.get_all_models():
                 model_tests = subject.test_suite.get_tests_by_model(model_id)
                 logger.log(f"Model {model_id} generated {len(model_tests)} tests")
@@ -217,18 +180,15 @@ class Core:
                 f"Processing {len(subject.test_suite.test_list)} tests for {subject_id}."
             )
 
-            # NEW: Process tests by model through all phases
             model_processor = ModelTestProcessor(logger, java_class_src)
             model_stats = model_processor.process_tests_by_model(
                 subject.test_suite, subject_output_testgen_dir
             )
 
-            # Generate model comparison report
             model_processor.generate_model_comparison_report(
                 model_stats, subject_output_testgen_dir
             )
 
-            # Log detailed model statistics
             for model_id, stats in model_stats.items():
                 raw_count = stats["raw"]["count"]
                 compiled_count = stats["compiled"]["count"]
@@ -238,53 +198,16 @@ class Core:
                     f"({success_rate:.1f}% success)"
                 )
 
-            # Fix the generated test suite (original approach)
-            # fixed_test_cases = subject.test_suite.repair_java_tests()
-            # fixed_tests_summary = "\n\n".join(fixed_test_cases)
-            # FileOperations.write_file(
-            #     os.path.join(
-            #         subject_output_testgen_dir, f"{subject_id}LlmFixedTest.java"
-            #     ),
-            #     fixed_tests_summary,
-            # )
-
-            # Discard tests that cannot be compiled (original approach)
-            # compiler = JavaTestCompiler(java_class_src)
-            # compiled_test_cases = []
-            # for test in fixed_test_cases:
-            #     try:
-            #         compiler.compile(test, with_tool=True)
-            #         compiled_test_cases.append(test)
-            #     except JavaTestCompilationException as e:
-            #         logger.log_warning(f"Test discarded - Compilation error:\n{e}")
-
             aggregated_compiled_tests = (
                 subject.test_suite.get_all_compiled_tests_by_model(model_stats)
             )
 
-            # Write both original and aggregated versions
-            # compiled_tests_summary = "\n\n".join(compiled_test_cases)
-            # FileOperations.write_file(
-            #     os.path.join(
-            #         subject_output_testgen_dir, f"{subject_id}LlmCompilableTest.java"
-            #     ),
-            #     compiled_tests_summary,
-            # )
-
-            # Write aggregated compiled tests (NEW - this will be used for Daikon)
             aggregated_compiled_summary = "\n\n".join(aggregated_compiled_tests)
 
             FileOperations.write_file(
                 os.path.join(subject_output_testgen_dir, "all_compiled_tests.java"),
                 aggregated_compiled_summary,
             )
-
-            # logger.log(f"Original approach: Compiled {len(compiled_test_cases)}
-            # tests.")
-            # logger.log(
-            #     f"New approach: Aggregated {len(aggregated_compiled_tests)} "
-            #     f"compiled tests from all models."
-            # )
 
             # Do not remove this line:
             #   it is used to read the logs and analyze the results
