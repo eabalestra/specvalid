@@ -20,6 +20,14 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="List all available prompts and exit.",
     )
+    parser.add_argument(
+        "--output-dir",
+        dest="output_dir",
+        type=str,
+        default="output",
+        help="Directory where all output files will be stored (default: output).",
+        metavar="PATH",
+    )
 
     sub = parser.add_subparsers(dest="command", required=False)
 
