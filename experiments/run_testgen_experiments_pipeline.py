@@ -173,35 +173,45 @@ def read_subjects_file(subjects_file):
     return subjects
 
 
-def build_specvalid_command(paths, models, prompts):
+def build_specvalid_command(paths, models, prompts, output_dir=None):
     """
-    Build the specvalid command with all required arguments.
+    Build the command to run specvalid.
 
     Args:
         paths: Dictionary containing all file paths
         models: Models string
         prompts: Prompts string
+        output_dir: Optional output directory
 
     Returns:
         list: Command as list of arguments
     """
-    return [
-        "specvalid",
-        "testgen",
-        paths["java_class_src"],
-        paths["java_test_suite"],
-        paths["java_test_driver"],
-        paths["bucket_assertions_file"],
-        paths["method"],
-        "-m",
-        models,
-        "-p",
-        prompts,
-        "-sf",
-        paths["specfuzzer_invs_file"],
-        "-sa",
-        paths["specfuzzer_assertions_file"],
-    ]
+    cmd = ["specvalid"]
+
+    if output_dir:
+        cmd.extend(["--output-dir", output_dir])
+
+    cmd.extend(
+        [
+            "testgen",
+            paths["java_class_src"],
+            paths["java_test_suite"],
+            paths["java_test_driver"],
+            paths["bucket_assertions_file"],
+            paths["method"],
+            "-m",
+            models,
+            "-p",
+            prompts,
+            "-sf",
+            paths["specfuzzer_invs_file"],
+            "-sa",
+            paths["specfuzzer_assertions_file"],
+            # "--reuse-tests",
+        ]
+    )
+
+    return cmd
 
 
 def main():
@@ -223,6 +233,12 @@ def main():
         "--prompts",
         default=DEFAULT_PROMPTS,
         help=f"Prompts to use (default: {DEFAULT_PROMPTS})",
+    )
+    parser.add_argument(
+        "-o",
+        "--output-dir",
+        default=None,
+        help="Output directory for all experiments (optional)",
     )
     parser.add_argument(
         "--dry-run",
@@ -251,13 +267,6 @@ def main():
     # Read subjects
     subjects = read_subjects_file(subjects_file)
     total_subjects = len(subjects)
-
-    # print("> Running experiment pipeline with the following configuration:")
-    # print(f"Models: {args.models}")
-    # print(f"Prompts: {args.prompts}")
-    # print(f"Subjects file: {subjects_file}")
-    # print(f"Total subjects to process: {total_subjects}")
-    # print("")
 
     successful_runs = 0
     failed_runs = 0
@@ -303,7 +312,7 @@ def main():
                 continue
 
         # Build and run the specvalid command
-        cmd = build_specvalid_command(paths, args.models, args.prompts)
+        cmd = build_specvalid_command(paths, args.models, args.prompts, args.output_dir)
 
         success = run_command(
             cmd,

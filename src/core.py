@@ -18,8 +18,6 @@ from testgen.model_test_processor import ModelTestProcessor
 
 import os
 
-SPECVALD_OUTPUT_DIR = "output"
-
 
 def select_models(
     llm_service: LLMService, models_list: list[str], models_prefix: str | None
@@ -66,8 +64,8 @@ def select_prompts(prompts_list):
     return prompt_IDs
 
 
-def _create_subject_output_directory(subject_id):
-    subject_output_dir = os.path.join(SPECVALD_OUTPUT_DIR, subject_id)
+def _create_subject_output_directory(output_base_dir, subject_id):
+    subject_output_dir = os.path.join(output_base_dir, subject_id)
     os.makedirs(subject_output_dir, exist_ok=True)
     return subject_output_dir
 
@@ -95,7 +93,9 @@ class Core:
             JavaTestDriver(args.test_driver),
         )
         self.compiler = JavaTestCompiler(args.target_class_src)
-        self.output_dir = _create_subject_output_directory(self.subject_id)
+        self.output_dir = _create_subject_output_directory(
+            args.output_dir, self.subject_id
+        )
         self.logs_output_dir = _init_subdirectory(
             self.output_dir, "logs", preserve_existing=True
         )
@@ -112,7 +112,9 @@ class Core:
             subject_id = f"{class_name}_{method}"
 
             # Set up output directory for the subject
-            subject_output_dir = _create_subject_output_directory(subject_id)
+            subject_output_dir = _create_subject_output_directory(
+                args.output_dir, subject_id
+            )
             subject_output_testgen_dir = _init_subdirectory(
                 subject_output_dir, "test", preserve_existing=args.reuse_tests
             )
