@@ -46,15 +46,17 @@ deactivate_venv_if_needed() {
 
 usage() {
     cat <<EOF
-Usage: $(basename "$0") -m <model1,model2,...> -p <prompt1,prompt2,...>
+Usage: $(basename "$0") -m <model1,model2,...> -p <prompt1,prompt2,...> [-o <output_dir>]
 
 Options:
   -m   Comma-separated list of models
   -p   Comma-separated list of prompts
+  -o   Output directory (optional, defaults to 'output')
   -h   Show this help
 
 Example:
   $(basename "$0") -m "gpt4,gpt4o" -p "promptA,promptB"
+  $(basename "$0") -m "gpt4,gpt4o" -p "promptA,promptB" -o "/tmp/experimento1"
 EOF
     exit 1
 }
@@ -63,11 +65,13 @@ trap deactivate_venv_if_needed EXIT
 
 MODELS=""
 PROMPTS=""
+OUTPUT_DIR=""
 
-while getopts "m:p:h" opt; do
+while getopts "m:p:o:h" opt; do
     case "$opt" in
         m) MODELS="$OPTARG" ;;
         p) PROMPTS="$OPTARG" ;;
+        o) OUTPUT_DIR="$OPTARG" ;;
         h) usage ;;
         *) usage ;;
     esac
@@ -136,8 +140,15 @@ echo "Starting test generation experiments"
 echo "  SPECVALID_DIR: $SPECVALID_DIR"
 echo "  MODELS: $MODELS"
 echo "  PROMPTS: $PROMPTS"
+echo "  OUTPUT_DIR: ${OUTPUT_DIR:-default (output)}"
 echo "  Timestamp: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 echo ""
 
+# Build arguments for the Python script
+PYTHON_ARGS="-m \"$MODELS\" -p \"$PROMPTS\""
+if [ -n "${OUTPUT_DIR:-}" ]; then
+    PYTHON_ARGS="$PYTHON_ARGS -o \"$OUTPUT_DIR\""
+fi
+
 # Run test generation experiments
-python3 experiments/run_testgen_experiments_pipeline.py -m "$MODELS" -p "$PROMPTS"
+eval "python3 experiments/run_testgen_experiments_pipeline.py $PYTHON_ARGS"
