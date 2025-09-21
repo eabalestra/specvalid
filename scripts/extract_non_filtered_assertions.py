@@ -41,8 +41,8 @@ for spec in sorted(filtered_specs):
 if len(sys.argv) > 3:
     class_name = sys.argv[3]
     method_name = sys.argv[4]
-
     output_directory = sys.argv[5]
+
     os.makedirs(output_directory, exist_ok=True)
 
     output_file = (
