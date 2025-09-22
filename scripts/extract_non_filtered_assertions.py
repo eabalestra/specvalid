@@ -5,7 +5,7 @@ import pandas as pd
 
 def write_specs_to_file(specs, filename):
     with open(filename, "w") as file:
-        for spec in sorted(specs):
+        for spec in sorted(specs, reverse=True):
             file.write(f"{spec}\n")
 
 
@@ -56,7 +56,6 @@ if len(sys.argv) > 3:
         f"{output_directory}/{class_name}-{method_name}-specfuzzer-refined.assertions"
     )
 
-    difference = sorted(difference, reverse=True)
     write_specs_to_file(difference, output_file)
     write_specs_to_file(
         filtered_specs,
