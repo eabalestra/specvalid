@@ -74,7 +74,10 @@ class JavaTestFixer:
 
         def replacement_logic(match):
             """Determine appropriate replacement based on expression content."""
-            expression = match.group(2) if len(match.groups()) >= 2 else ""
+            try:
+                expression = match.group(2)
+            except IndexError:
+                expression = ""
 
             # If expression contains method calls that should be executed,
             # keep it as executable statement
