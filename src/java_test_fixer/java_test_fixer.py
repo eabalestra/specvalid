@@ -47,7 +47,6 @@ class JavaTestFixer:
     @staticmethod
     def _contains_method_calls(expression: str) -> bool:
         """Check if an expression contains method calls that should be executed."""
-        import re
 
         # Pattern to detect method calls
         method_call_pattern = r"\w+\.\w+\s*\("
