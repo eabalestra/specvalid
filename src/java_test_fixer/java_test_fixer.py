@@ -45,38 +45,80 @@ class JavaTestFixer:
         return test_code
 
     @staticmethod
-    def _remove_assert_wrappers(test: str) -> str:
+    def _contains_method_calls(expression: str) -> bool:
+        """Check if an expression contains method calls that should be executed."""
+        import re
+
+        # Pattern to detect method calls
+        method_call_pattern = r"\w+\.\w+\s*\("
+
+        # Check if expression contains method calls
+        has_method_calls = bool(re.search(method_call_pattern, expression))
+
+        if not has_method_calls:
+            return False
+
+        # Additional check: if it contains comparison operators,
+        # it's likely a boolean expression that should be commented
+        comparison_operators = ["==", "!=", "<=", ">=", "<", ">", "&&", "||"]
+        has_comparisons = any(op in expression for op in comparison_operators)
+
+        # If it has both method calls and comparisons, treat as boolean expression
+        if has_comparisons:
+            return False
+
+        # If it's just method calls without comparisons, treat as executable
+        return True
+
+    @staticmethod
+    def remove_assertions_from_test(test: str) -> str:
+        import re
+
+        def replacement_logic(match):
+            """Determine appropriate replacement based on expression content."""
+            expression = match.group(2) if len(match.groups()) >= 2 else ""
+
+            # If expression contains method calls that should be executed,
+            # keep it as executable statement
+            if JavaTestFixer._contains_method_calls(expression):
+                return f"{expression};"
+            else:
+                # If it's just a boolean comparison, comment it out
+                return f"// assertion removed: {expression};"
+
         # Remove assertion wrappers for different types of assertions
         patterns_to_remove = [
             # JUnit assertions with message parameter (first argument is message)
-            (
-                r"\b(assertTrue|assertFalse)\s*\("
-                r"\s*\"[^\"]*\"\s*,\s*(.*?)\s*\)\s*;",
-                r"\2;",
-            ),
-            (
-                r"\b(assertEquals|assertNotEquals)\s*\("
-                r"\s*\"[^\"]*\"\s*,\s*[^,]+\s*,\s*(.*?)\s*\)\s*;",
-                r"\2;",
-            ),
+            r"\b(assertTrue|assertFalse)\s*\(\s*\"[^\"]*\"\s*,\s*(.*?)\s*\)\s*;",
+            r"\b(assertEquals|assertNotEquals)\s*\(\s*\"[^\"]*\"\s*,\s*[^,]+\s*,"
+            r"\s*(.*?)\s*\)\s*;",
             # JUnit assertions with single argument (assertTrue, assertFalse)
-            (r"\b(assertTrue|assertFalse)\s*\(\s*(.*?)\s*\)\s*;", r"\2;"),
+            r"\b(assertTrue|assertFalse)\s*\(\s*(.*?)\s*\)\s*;",
             # JUnit assertions with two arguments (assertEquals, assertNotEquals, etc.)
-            (
-                r"\b(assertEquals|assertNotEquals|assertSame|assertNotSame|"
-                r"assertArrayEquals)\s*\(\s*[^,]+\s*,\s*(.*?)\s*\)\s*;",
-                r"\2;",
-            ),
+            r"\b(assertEquals|assertNotEquals|assertSame|assertNotSame|"
+            r"assertArrayEquals)\s*\(\s*[^,]+\s*,\s*(.*?)\s*\)\s*;",
             # assertThat statements (Hamcrest/AssertJ style)
-            (r"\b(assertThat)\s*\(\s*(.*?)\s*,\s*.*?\)\s*;", r"\2;"),
-            # fail statements with message
-            (r"\b(fail)\s*\(\s*\"[^\"]*\"\s*\)\s*;", r"// fail removed;"),
-            # fail statements without message
-            (r"\b(fail)\s*\(\s*\)\s*;", r"// fail removed;"),
+            r"\b(assertThat)\s*\(\s*(.*?)\s*,\s*.*?\)\s*;",
+            r"\b(assertNull|assertNotNull)\s*\(\s*(.*?)\s*\)\s*;",
+            r"\b(assertThrows)\s*\(\s*[^,]+\s*,\s*(.*?)\s*\)\s*;",
+            r"\b(assertDoesNotThrow)\s*\(\s*(.*?)\s*\)\s*;",
+            r"\b(assertAll)\s*\(\s*(.*?)\s*\)\s*;",
+            r"\b(assumeTrue|assumeFalse)\s*\(\s*(.*?)\s*\)\s*;",
+            r"\b(assumeThat)\s*\(\s*(.*?)\s*,\s*.*?\)\s*;",
         ]
 
         result = test
-        for pattern, replacement in patterns_to_remove:
+        for pattern in patterns_to_remove:
+            compiled_pattern = re.compile(pattern, re.DOTALL)
+            result = compiled_pattern.sub(replacement_logic, result)
+
+        # Handle fail statements separately (these should always be commented)
+        fail_patterns = [
+            (r"\b(fail)\s*\(\s*\"[^\"]*\"\s*\)\s*;", r"// fail removed;"),
+            (r"\b(fail)\s*\(\s*\)\s*;", r"// fail removed;"),
+        ]
+
+        for pattern, replacement in fail_patterns:
             compiled_pattern = re.compile(pattern, re.DOTALL)
             result = compiled_pattern.sub(replacement, result)
 
