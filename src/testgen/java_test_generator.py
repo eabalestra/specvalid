@@ -83,7 +83,7 @@ class JavaTestGenerator:
                         responses.append(test_with_spec)
 
                         # Version without assert wrappers
-                        test_without_wrappers = JavaTestFixer._remove_assert_wrappers(
+                        test_without_wrappers = JavaTestFixer.remove_assertions_from_test(
                             test_with_spec
                         )
                         responses.append(test_without_wrappers)
