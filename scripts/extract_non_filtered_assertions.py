@@ -2,6 +2,13 @@ import os
 import sys
 import pandas as pd
 
+
+def write_specs_to_file(specs, filename):
+    with open(filename, "w") as file:
+        for spec in sorted(specs, reverse=True):
+            file.write(f"{spec}\n")
+
+
 specfuzzer_assertions_file = sys.argv[1]
 invalid_post_conditions_csv = sys.argv[2]
 
@@ -49,7 +56,8 @@ if len(sys.argv) > 3:
         f"{output_directory}/{class_name}-{method_name}-specfuzzer-refined.assertions"
     )
 
-    difference = sorted(difference, reverse=True)
-    with open(output_file, "w") as file:
-        for item in difference:
-            file.write(f"{item}\n")
+    write_specs_to_file(difference, output_file)
+    write_specs_to_file(
+        filtered_specs,
+        f"{output_directory}/{class_name}-{method_name}-specvalid-filtered.assertions",
+    )
