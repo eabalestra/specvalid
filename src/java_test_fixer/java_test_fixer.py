@@ -71,7 +71,6 @@ class JavaTestFixer:
 
     @staticmethod
     def remove_assertions_from_test(test: str) -> str:
-        import re
 
         def replacement_logic(match):
             """Determine appropriate replacement based on expression content."""
