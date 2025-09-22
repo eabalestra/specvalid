@@ -49,7 +49,7 @@ class JavaTestFixer:
         """Check if an expression contains method calls that should be executed."""
 
         # Pattern to detect method calls
-        method_call_pattern = r"\w+\.\w+\s*\("
+        method_call_pattern = r"[a-zA-Z_$][a-zA-Z0-9_$]*(?:\.[a-zA-Z_$][a-zA-Z0-9_$]*)*\s*\("
 
         # Check if expression contains method calls
         has_method_calls = bool(re.search(method_call_pattern, expression))
