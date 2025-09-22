@@ -315,18 +315,23 @@ class Core:
                 f"Run Dynamic Comparability Analysis from driver: "
                 f"{augmented_test_driver_name}"
             )
-            daikon.run_dyn_comp()
+            try:
+                daikon.run_dyn_comp()
+            except RuntimeError as e:
+                logger.log_error(f"Error during DynComp: {e}")
 
             logger.log(
                 f"Run Chicory DTrace generation from driver: "
                 f"{augmented_test_driver_name}"
             )
-            daikon.run_chicory_dtrace_generation()
+            try:
+                daikon.run_chicory_dtrace_generation()
+            except RuntimeError as e:
+                logger.log_error(f"Error during Chicory DTrace generation: {e}")
 
             logger.log(
                 f"Run Daikon Invariant Checker from driver: {augmented_test_driver_name}"
             )
-
             invalid_invs = daikon.run_invariant_checker(self.args.specfuzzer_invs_file)
 
             # Build fully-qualified class name relative to src/main/java
