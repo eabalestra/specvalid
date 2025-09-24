@@ -43,21 +43,41 @@ def create_name_mapping(subjects_map, existing_subjects):
         if subject in subjects_map:
             name_mapping[subject] = (subject, subjects_map[subject])
 
-    # Handle naming variations
+    # Handle naming variations - try exact class_method match first
     for existing_subject in existing_subjects:
         if existing_subject not in name_mapping:
-            # Try to find a match by method name
-            existing_parts = existing_subject.split("_")
-            if len(existing_parts) > 1:
-                existing_method = existing_parts[-1]
-            else:
-                existing_method = existing_subject
+            # Convert existing subject to lowercase for comparison
+            existing_lower = existing_subject.lower()
 
+            # Try to find exact match by converting subject names to expected format
             for mapped_subject, (class_name, method_name) in subjects_map.items():
-                if method_name == existing_method:
+                # Create expected directory name from class and method
+                class_simple = class_name.split(".")[-1]  # Get last part of class name
+                expected_dir = f"{class_simple}_{method_name}"
+
+                # Try multiple variations of expected directory name
+                variations = [
+                    expected_dir,
+                    expected_dir.lower(),
+                    f"{class_simple.lower()}_{method_name}",
+                    mapped_subject,
+                    mapped_subject.lower(),
+                ]
+
+                if (
+                    existing_subject in variations
+                    or existing_lower in [v.lower() for v in variations]
+                    or existing_subject.lower() == expected_dir.lower()
+                ):
                     mapping_info = (mapped_subject, (class_name, method_name))
                     name_mapping[existing_subject] = mapping_info
                     break
+
+    # Fallback: if still no mapping, use the directory name as-is
+    for existing_subject in existing_subjects:
+        if existing_subject not in name_mapping:
+            # Create a fallback mapping using the directory name
+            name_mapping[existing_subject] = (existing_subject, ("", ""))
 
     return name_mapping
 
@@ -283,7 +303,7 @@ def get_best_performing_models(model_results):
     return best_models
 
 
-def get_best_model_per_subject(unified_results):
+def get_best_model_per_subject(unified_results, subjects_order):
     """Get best model per subject by specs filtered and test success"""
     subjects_summary = {}
 
@@ -294,29 +314,60 @@ def get_best_model_per_subject(unified_results):
         subjects_summary[subject].append(result)
 
     subject_best_models = []
+
+    # Process subjects in the order they appear in the subjects file
+    for subject in subjects_order:
+        if subject in subjects_summary:
+            results = subjects_summary[subject]
+            # Sort by specs filtered first, then by tests compiled, then fixed
+            best_result = max(
+                results,
+                key=lambda x: (
+                    x["SPECS_FILTERED"],
+                    x["TESTS_COMPILED"],
+                    x["TESTS_FIXED"],
+                ),
+            )
+
+            subject_best_models.append(
+                {
+                    "SUBJECT": subject,
+                    "CLASS": best_result["CLASS"],
+                    "METHOD": best_result["METHOD"],
+                    "BEST_MODEL": best_result["MODEL"],
+                    "SPECS_AVAILABLE": best_result["SPECS_AVAILABLE"],
+                    "TESTS_GENERATED": best_result["TESTS_GENERATED"],
+                    "TESTS_FIXED": best_result["TESTS_FIXED"],
+                    "TESTS_COMPILED": best_result["TESTS_COMPILED"],
+                    "SPECS_FILTERED": best_result["SPECS_FILTERED"],
+                }
+            )
+
+    # Add any remaining subjects that weren't in the subjects file
     for subject, results in subjects_summary.items():
-        # Sort by specs filtered first, then by tests compiled, then fixed
-        best_result = max(
-            results,
-            key=lambda x: (x["SPECS_FILTERED"], x["TESTS_COMPILED"], x["TESTS_FIXED"]),
-        )
+        if subject not in subjects_order:
+            best_result = max(
+                results,
+                key=lambda x: (
+                    x["SPECS_FILTERED"],
+                    x["TESTS_COMPILED"],
+                    x["TESTS_FIXED"],
+                ),
+            )
 
-        subject_best_models.append(
-            {
-                "SUBJECT": subject,
-                "CLASS": best_result["CLASS"],
-                "METHOD": best_result["METHOD"],
-                "BEST_MODEL": best_result["MODEL"],
-                "SPECS_AVAILABLE": best_result["SPECS_AVAILABLE"],
-                "TESTS_GENERATED": best_result["TESTS_GENERATED"],
-                "TESTS_FIXED": best_result["TESTS_FIXED"],
-                "TESTS_COMPILED": best_result["TESTS_COMPILED"],
-                "SPECS_FILTERED": best_result["SPECS_FILTERED"],
-            }
-        )
-
-    # Sort subjects by specs filtered (descending)
-    subject_best_models.sort(key=lambda x: x["SPECS_FILTERED"], reverse=True)
+            subject_best_models.append(
+                {
+                    "SUBJECT": subject,
+                    "CLASS": best_result["CLASS"],
+                    "METHOD": best_result["METHOD"],
+                    "BEST_MODEL": best_result["MODEL"],
+                    "SPECS_AVAILABLE": best_result["SPECS_AVAILABLE"],
+                    "TESTS_GENERATED": best_result["TESTS_GENERATED"],
+                    "TESTS_FIXED": best_result["TESTS_FIXED"],
+                    "TESTS_COMPILED": best_result["TESTS_COMPILED"],
+                    "SPECS_FILTERED": best_result["SPECS_FILTERED"],
+                }
+            )
 
     return subject_best_models
 
@@ -421,7 +472,9 @@ def main():
         best_models_file = "experiments/results/best_performing_models.csv"
 
         # Generate best model per subject summary
-        subject_best_models = get_best_model_per_subject(unified_results)
+        subject_best_models = get_best_model_per_subject(
+            unified_results, subjects_order
+        )
         subject_summary_file = "experiments/results/best_model_per_subject.csv"
 
         if best_models:
