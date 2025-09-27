@@ -257,8 +257,17 @@ class Core:
             )
 
             if not final_tests:
-                with open(self.args.specfuzzer_assertions_file, "r") as file:
-                    set1 = {line.strip() for line in file}
+                try:
+                    with open(self.args.specfuzzer_assertions_file, "r") as file:
+                        set1 = {line.strip() for line in file}
+                except FileNotFoundError:
+                    logger.log_error(f"Assertions file not found: {self.args.specfuzzer_assertions_file}")
+                    print(f"❌ Assertions file not found: {self.args.specfuzzer_assertions_file}")
+                    return
+                except PermissionError:
+                    logger.log_error(f"Permission denied when accessing assertions file: {self.args.specfuzzer_assertions_file}")
+                    print(f"❌ Permission denied when accessing assertions file: {self.args.specfuzzer_assertions_file}")
+                    return
                 set1 = {
                     item
                     for item in set1
