@@ -26,7 +26,13 @@ class JavaTestGenerator:
         self.logger = logger
 
     def generate_test(
-        self, class_code, method_code, spec, prompt_ids=None, models_ids=None
+        self,
+        class_code,
+        method_code,
+        spec,
+        raw_spec: str = "",
+        prompt_ids=None,
+        models_ids=None,
     ):
         prompt_ids = prompt_ids or PromptID.all()
         models_ids = models_ids or []
@@ -42,7 +48,7 @@ class JavaTestGenerator:
                 generated_test_cases_by_model[mid] = []
 
             for pid in prompt_ids:
-                llm_generated_cases = self._execute(pid, mid, spec)
+                llm_generated_cases = self._execute(pid, mid, spec, raw_spec)
                 generated_test_cases_by_model[mid].extend(llm_generated_cases)
 
         return generated_test_cases_by_model
@@ -54,7 +60,7 @@ class JavaTestGenerator:
         )
         self.prompts.append(prompt)
 
-    def _execute(self, pid, mid, spec) -> List[str]:
+    def _execute(self, pid, mid, spec, raw_spec: str) -> List[str]:
         responses = []
         for prompt in self.prompts:
             if prompt.id != pid:
@@ -63,8 +69,6 @@ class JavaTestGenerator:
             response = self.llm_service.execute_prompt(
                 mid, prompt.generate_prompt(), prompt.format_instructions
             )
-
-            # print(f"Response for prompt {pid} and model {mid}: \n{response}\n\n")
 
             if response is not None:
                 self.logger.log(
@@ -80,14 +84,16 @@ class JavaTestGenerator:
 
                         # Version with spec annotation
                         test_with_spec = Specs.add_spec_annotation(validated_test, spec)
-                        responses.append(test_with_spec)
+                        test_with_specs = Specs.add_spec_annotation(
+                            test_with_spec, raw_spec
+                        )
+                        responses.append(test_with_specs)
 
                         # Version without assert wrappers
-                        test_without_wrappers = JavaTestFixer.remove_assertions_from_test(
-                            test_with_spec
+                        test_without_wrappers = (
+                            JavaTestFixer.remove_assertions_from_test(test_with_specs)
                         )
                         responses.append(test_without_wrappers)
-
         return responses
 
     def _reprompt_until_validate(self, model_id: str, test: str) -> str:

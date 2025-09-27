@@ -24,15 +24,16 @@ class JavaLLMTestGenService:
         total_time = 0.0
 
         for assertion in self.assertions_from_specfuzzer:
-            assertion = self.subject.specs.transform_specification_vars(assertion)
-            self.logger.log(f"Generating test for assertion: {assertion}")
+            test_assertion = self.subject.specs.transform_specification_vars(assertion)
+            self.logger.log(f"Generating test for assertion: {test_assertion}")
             start_time = time.time()
 
             # Use LLMs to generate tests that invalidate the assertion
             generated_tests_by_model = self.test_generator.generate_test(
                 class_code=self.subject.class_code,
                 method_code=self.subject.method_code,
-                spec=assertion,
+                spec=test_assertion,
+                raw_spec=assertion,
                 prompt_ids=prompts,
                 models_ids=models,
             )
@@ -45,7 +46,7 @@ class JavaLLMTestGenService:
                     self.subject.test_suite.add_test_by_model(model_id, test)
 
             self.timestamp_logger.log(
-                f"Test generation for assertion '{assertion}' took "
+                f"Test generation for assertion '{test_assertion}' took "
                 f"{elapsed_time:.2f} seconds"
             )
 
