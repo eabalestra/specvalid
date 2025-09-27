@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 import subprocess
-from typing import Any
+from typing import Optional
 from file_operations.file_ops import FileOperations
 from subject.subject import Subject
 
@@ -41,7 +41,7 @@ class Daikon:
         project_libs = os.path.join(subject.root_dir, "libs", "*")
         self.cp_for_daikon = os.pathsep.join([project_libs, "libs/*", self.subject_cp])
 
-        self.objs_file: str | None = None
+        self.objs_file: Optional[str] = None
 
     def run_dyn_comp(self) -> None:
         Path(f"{self.output_dir}/{self.test_driver}.decls-DynComp").touch()
