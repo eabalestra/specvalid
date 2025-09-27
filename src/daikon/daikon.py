@@ -35,7 +35,6 @@ class Daikon:
             subject.root_dir, "build", "classes", "java", "test"
         )
         build_libs = os.path.join(subject.root_dir, "build", "libs", "*")
-        # self.subject_cp = f"{main_classes}:{test_classes}:{build_libs}"
         self.subject_cp = os.pathsep.join([main_classes, test_classes, build_libs])
 
         # Include both project-specific libs and global libs in classpath
