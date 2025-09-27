@@ -257,9 +257,7 @@ class Core:
             )
 
             if not final_tests:
-                logger.log(
-                    "No tests found in all_compiled_tests.java - skipping Daikon"
-                )
+                logger.log("No tests found in compiled_tests.java - skipping Daikon")
                 return
 
             logger.log(f"Found {len(final_tests)} tests to validate against")
@@ -283,10 +281,6 @@ class Core:
                 + augmented_test_driver_name
             )
 
-            # Clean first to remove any cached build artifacts
-            self.compiler.compile_project(clean=True)
-            logger.log("Project cleaned and compiled successfully.")
-
             # Set up the suite and driver for append the generated tests
             new_test_suite_path = JavaTestFileUpdater.prepare_test_file(
                 self.args.test_suite, "Augmented", is_driver=False
@@ -294,6 +288,10 @@ class Core:
             new_test_driver_path = JavaTestFileUpdater.prepare_test_file(
                 self.args.test_driver, "Augmented", is_driver=True
             )
+
+            # Clean first to remove any cached build artifacts
+            self.compiler.compile_project(clean=True)
+            logger.log("Project cleaned and compiled successfully.")
 
             # Append the tests to the suite and driver
             appender = JavaTestApender()
@@ -369,7 +367,7 @@ class Core:
             result = subprocess.run(cmd, capture_output=True, text=True)
             logger.log(result.stdout)
         except Exception as e:
-            logger.log_error(f"Error during invariant filtering: {e}")
+            logger.log_error(f"❌ Error during invariant filtering: {e}")
             print(f"❌ Error during invariant filtering: {e}")
             return
 
