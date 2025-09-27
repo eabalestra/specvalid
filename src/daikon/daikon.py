@@ -1,4 +1,7 @@
+import os
+from pathlib import Path
 import subprocess
+from typing import Any
 from file_operations.file_ops import FileOperations
 from subject.subject import Subject
 
@@ -25,17 +28,24 @@ class Daikon:
         self.invariant_timeout = invariant_timeout
 
         # Use build/classes for Gradle projects, fallback to build/libs if it exists
-        main_classes = f"{subject.root_dir}/build/classes/java/main"
-        test_classes = f"{subject.root_dir}/build/classes/java/test"
-        build_libs = f"{subject.root_dir}/build/libs/*"
-        self.subject_cp = f"{main_classes}:{test_classes}:{build_libs}"
+        main_classes = os.path.join(
+            subject.root_dir, "build", "classes", "java", "main"
+        )
+        test_classes = os.path.join(
+            subject.root_dir, "build", "classes", "java", "test"
+        )
+        build_libs = os.path.join(subject.root_dir, "build", "libs", "*")
+        # self.subject_cp = f"{main_classes}:{test_classes}:{build_libs}"
+        self.subject_cp = os.pathsep.join([main_classes, test_classes, build_libs])
 
         # Include both project-specific libs and global libs in classpath
-        project_libs = f"{subject.root_dir}/libs/*"
-        self.cp_for_daikon = f"{project_libs}:libs/*:{self.subject_cp}"
+        project_libs = os.path.join(subject.root_dir, "libs", "*")
+        self.cp_for_daikon = os.pathsep.join([project_libs, "libs/*", self.subject_cp])
+
+        self.objs_file: str | None = None
 
     def run_dyn_comp(self) -> None:
-        open(f"{self.output_dir}/{self.test_driver}.decls-DynComp", "w").close()
+        Path(f"{self.output_dir}/{self.test_driver}.decls-DynComp").touch()
         try:
             cmd = [
                 "java",
