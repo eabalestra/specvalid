@@ -120,7 +120,7 @@ class JavaTestSuite:
                 json.dump(metadata, f, indent=2)
 
     def _rename_test_methods(self, test_methods: List[str], new_name: str) -> List[str]:
-        name_pattern = r"((?:public\s+)?void)\s+\w+\(\)"
+        name_pattern = r"((?:public\s+)?void)\s+\w+\s*\([^)]*\)"
         return [
             re.sub(name_pattern, rf"\1 {new_name}{i}()", test_method)
             for i, test_method in enumerate(test_methods)

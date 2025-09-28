@@ -29,7 +29,7 @@ class JavaTestFixer:
         return test_code
 
     def _add_throws_signature(self, test_code: str) -> str:
-        pattern = r"((public\s+)?void \w+\(\))\s*(?:throws\s+[^\\{]*)?\s*\{"
+        pattern = r"((public\s+)?void \w+\s*\([^)]*\))\s*(?:throws\s+[^\\{]*)?\s*\{"
         replacement = r"\1 throws Throwable {"
         return re.sub(pattern, replacement, test_code)
 
@@ -40,7 +40,8 @@ class JavaTestFixer:
             full_name = f"{prefix}{file_name}"
             # TODO: Modified pattern: allow class name followed by dot (for method calls)
             # but not preceded by word characters or dots
-            pattern = re.compile(rf"(?<![\w\.]){re.escape(file_name)}(?=\.|\s|$)")
+            # Also allow constructor calls where the class name is followed by "("
+            pattern = re.compile(rf"(?<![\w\.]){re.escape(file_name)}(?=\.|\s|\(|$)")
             test_code = pattern.sub(full_name, test_code)
         return test_code
 
@@ -49,7 +50,9 @@ class JavaTestFixer:
         """Check if an expression contains method calls that should be executed."""
 
         # Pattern to detect method calls
-        method_call_pattern = r"[a-zA-Z_$][a-zA-Z0-9_$]*(?:\.[a-zA-Z_$][a-zA-Z0-9_$]*)*\s*\("
+        method_call_pattern = (
+            r"[a-zA-Z_$][a-zA-Z0-9_$]*(?:\.[a-zA-Z_$][a-zA-Z0-9_$]*)*\s*\("
+        )
 
         # Check if expression contains method calls
         has_method_calls = bool(re.search(method_call_pattern, expression))

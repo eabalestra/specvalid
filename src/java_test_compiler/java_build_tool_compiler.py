@@ -54,18 +54,11 @@ class JavaBuildToolCompiler:
     def _compile_with_gradle(self, work_dir: Path) -> None:
         try:
             result = subprocess.run(
-                ["./gradlew", "clean"],
+                ["./gradlew", "clean", "testClasses"],
                 cwd=work_dir,
                 capture_output=True,
                 text=True,
                 check=True,
-            )
-            result = subprocess.run(
-                ["./gradlew", "clean", "assemble", "testClasses", "-x", "test"],
-                cwd=work_dir,
-                capture_output=True,
-                text=True,
-                check=False,
             )
             if result.returncode != 0:
                 raise JavaTestCompilationException(f"{result.stderr}")
