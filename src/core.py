@@ -257,7 +257,35 @@ class Core:
             )
 
             if not final_tests:
-                logger.log("No tests found in compiled_tests.java - skipping Daikon")
+                try:
+                    with open(self.args.specfuzzer_assertions_file, "r") as file:
+                        set1 = {line.strip() for line in file}
+                except FileNotFoundError:
+                    logger.log_error(f"Assertions file not found: {self.args.specfuzzer_assertions_file}")
+                    print(f"❌ Assertions file not found: {self.args.specfuzzer_assertions_file}")
+                    return
+                except PermissionError:
+                    logger.log_error(f"Permission denied when accessing assertions file: {self.args.specfuzzer_assertions_file}")
+                    print(f"❌ Permission denied when accessing assertions file: {self.args.specfuzzer_assertions_file}")
+                    return
+                set1 = {
+                    item
+                    for item in set1
+                    if item
+                    and not item.startswith(
+                        "==========================================================================="
+                    )
+                    and ":::OBJECT" not in item
+                    and ":::ENTER" not in item
+                    and ":::EXIT" not in item
+                }
+                assertions_file_name = os.path.basename(
+                    self.args.specfuzzer_assertions_file
+                )
+                logger.log(f"Specs from {assertions_file_name}: {len(set1)}")
+                logger.log(
+                    "No tests found in all_compiled_tests.java - skipping Daikon"
+                )
                 return
 
             logger.log(f"Found {len(final_tests)} tests to validate against")
