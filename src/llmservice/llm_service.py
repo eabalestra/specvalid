@@ -166,10 +166,10 @@ class LLMService:
     def get_all_models(self):
         return list(self.supported_models.keys())
 
-    def get_model_url(self, model_id: str):
+    def get_model_url(self, model_id: str) -> str:
         for key in self.supported_models.keys():
             if key.upper() == model_id.upper():
-                return self.supported_models.get(key)
+                return self.supported_models.get(key) or ""
         return ""
 
     def get_model_ids_startswith(self, prefix: str):
@@ -208,16 +208,27 @@ class LLMService:
         #     print("Model Skipped:{}".format(model_id))
         return response
 
-    def gpt_execute_prompt(
+    def gpt_execute_prompt(self, model_id, prompt="", format_instructions=""):
+        model_url = self.get_model_url(model_id)
+        if model_url == "":
+            model_url = self.get_model_url("GPT4oMini")
+
+        try:
+            response = self.gpt_client.responses.create(
+                model=model_url,
+                input=prompt + format_instructions,
+            )
+            return response.output_text
+        except Exception as e:
+            print(f"gpt_execute_prompt: exception: {e}")
+            return None
+
+    def gpt_old_execute_prompt(
         self, model_id="GPT4oMini", prompt="", format_instructions=""
     ):
         model_url = self.get_model_url(model_id)
         if model_url == "":
             model_url = self.get_model_url("GPT4oMini")
-
-        # parser = PydanticOutputParser(pydantic_object=TraitList)
-        if format_instructions == "":
-            format_instructions = ""  # parser.get_format_instructions()
         try:
             messages = [{"role": "user", "content": prompt + format_instructions}]
             completion = self.gpt_client.chat.completions.create(
@@ -228,38 +239,7 @@ class LLMService:
                 print("gpt_execute_prompt:gpt_response.refusal: ", gpt_response.refusal)
                 return None
             else:
-                # parsed_mc_question = parser.invoke(gpt_response.content)
-                return gpt_response.content  # Return content string, not message object
-        except ValidationError as err:
-            print("gpt_execute_prompt:ValidationError: ", err)
-            return None
-        except Exception as exc:
-            print("gpt_execute_prompt: general exception: ", exc)
-            return None
-
-    def gpt_old_execute_prompt(
-        self, model_id="GPT35TurboInstruct", prompt="", format_instructions=""
-    ):
-        model_url = self.get_model_url(model_id)
-        if model_url == "":
-            model_url = self.get_model_url("GPT35TurboInstruct")
-
-        # parser = PydanticOutputParser(pydantic_object=TraitList)
-        if format_instructions == "":
-            format_instructions = ""  # parser.get_format_instructions()
-        try:
-            messages = prompt + format_instructions
-            completion = self.gpt_client.completions.create(
-                model=model_url, prompt=messages
-            )
-            gpt_response = completion.choices[0].text
-
-            if "error" in gpt_response:
-                print("gpt_execute_prompt:gpt_response.refusal: ", gpt_response)
-                return None
-            else:
-                # parsed_mc_question = parser.invoke(gpt_response)
-                return gpt_response  # parsed_mc_question
+                return gpt_response.content
         except ValidationError as err:
             print("gpt_execute_prompt:ValidationError: ", err)
             return None
