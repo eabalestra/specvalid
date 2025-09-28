@@ -222,6 +222,7 @@ class LLMService:
         except Exception as e:
             print(f"gpt_execute_prompt: exception: {e}")
             return None
+
     def gpt_old_execute_prompt(
         self, model_id="GPT4oMini", prompt="", format_instructions=""
     ):
