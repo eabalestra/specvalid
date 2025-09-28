@@ -1,5 +1,5 @@
 import re
-from typing import List, Tuple
+from typing import List, Set, Tuple
 
 
 class JavaCodeExtractor:
@@ -267,9 +267,60 @@ class JavaCodeExtractor:
 
     @staticmethod
     def extract_other_method_signatures(class_code: str) -> List[str]:
-        pattern = r"^\s*(?:(?:public)|(?:private)|(?:static)|(?:protected)\s+)*.*\s+(\w+)\s*\(.*\)\s*(?:throws\s+[\w\s,]+)?\s*{"
-        matches = re.findall(pattern, class_code, re.MULTILINE)
-        return matches
+        def _strip_comments(code: str) -> str:
+            without_block = re.sub(r"/\*.*?\*/", "", code, flags=re.DOTALL)
+            return re.sub(r"(?m)^\s*//.*$", "", without_block)
+
+        cleaned_code = _strip_comments(class_code)
+        class_match = re.search(r"\bclass\s+([A-Za-z_][\w$]*)", cleaned_code)
+        class_name = class_match.group(1) if class_match else ""
+
+        method_pattern = re.compile(
+            r"""
+            ^\s*
+            (?P<modifiers>(?:public|protected|private|static|final|abstract|synchronized|default|native|strictfp)\s+)*
+            (?P<generics><[^>]+>\s+)?
+            (?:
+                (?P<return_type>(?:[\w$.<>?\[\],&]+(?:\s+[\w$.<>?\[\],&]+)*))\s+
+                (?P<method_name>[A-Za-z_][\w$]*)
+                |
+                (?P<constructor_name>[A-Za-z_][\w$]*)
+            )
+            \s*\(
+                (?P<params>[^)]*)
+            \)\s*
+            (?:throws\s+[^{]*)?
+            \{
+            """,
+            re.MULTILINE | re.VERBOSE,
+        )
+
+        signatures: List[str] = []
+        seen: Set[str] = set()
+
+        for match in method_pattern.finditer(cleaned_code):
+            method_name = match.group("method_name")
+            constructor_name = match.group("constructor_name")
+
+            if constructor_name:
+                if not class_name or constructor_name != class_name:
+                    continue
+                name = constructor_name
+            else:
+                name = method_name
+
+            if not name:
+                continue
+
+            params = match.group("params").strip()
+            params = re.sub(r"\s+", " ", params)
+            signature = f"{name}({params})" if params else f"{name}()"
+
+            if signature not in seen:
+                seen.add(signature)
+                signatures.append(signature)
+
+        return signatures
 
     @staticmethod
     def extract_method_signature(method_code: str) -> str:
