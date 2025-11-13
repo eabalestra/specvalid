@@ -258,15 +258,15 @@ class Core:
                         set1 = {line.strip() for line in file}
                 except FileNotFoundError:
                     msg = (
-                        "❌ Assertions file not found: "
-                        + f"{self.args.specfuzzer_assertions_file}"
+                        f"❌ Assertions file not found: "
+                        f"{self.args.specfuzzer_assertions_file}"
                     )
                     logger.log_error(msg)
                     print(msg)
                     return
                 except PermissionError:
                     msg = (
-                        "❌ Permission denied when accessing assertions file: "
+                        f"❌ Permission denied when accessing assertions file: "
                         f"{self.args.specfuzzer_assertions_file}"
                     )
                     logger.log_error(msg)
