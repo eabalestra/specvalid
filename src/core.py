@@ -234,10 +234,6 @@ class Core:
             if os.path.exists(compiled_tests_file):
                 available_models.append(model_name)
 
-        if not available_models:
-            logger.log_error("No models with compiled tests found - skipping Daikon")
-            return
-
         logger.log(
             f"Found {len(available_models)} models with compiled tests: "
             f"{available_models}"
@@ -261,12 +257,20 @@ class Core:
                     with open(self.args.specfuzzer_assertions_file, "r") as file:
                         set1 = {line.strip() for line in file}
                 except FileNotFoundError:
-                    logger.log_error(f"Assertions file not found: {self.args.specfuzzer_assertions_file}")
-                    print(f"❌ Assertions file not found: {self.args.specfuzzer_assertions_file}")
+                    msg = (
+                        f"❌ Assertions file not found: "
+                        f"{self.args.specfuzzer_assertions_file}"
+                    )
+                    logger.log_error(msg)
+                    print(msg)
                     return
                 except PermissionError:
-                    logger.log_error(f"Permission denied when accessing assertions file: {self.args.specfuzzer_assertions_file}")
-                    print(f"❌ Permission denied when accessing assertions file: {self.args.specfuzzer_assertions_file}")
+                    msg = (
+                        f"❌ Permission denied when accessing assertions file: "
+                        f"{self.args.specfuzzer_assertions_file}"
+                    )
+                    logger.log_error(msg)
+                    print(msg)
                     return
                 set1 = {
                     item

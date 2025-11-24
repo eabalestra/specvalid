@@ -2,16 +2,19 @@ BASE_TEMPLATE = """
 You are an expert in program verification and testing. You are given a Java method and a postcondition assertion for that method.
 Based on the method behavior, you will need to confirm that the method meets the postcondition.
 If indeed the method meets the postcondition, you MUST output "OK".
-If, on the other hand, you determine that the method does NOT meet the postcondition, you MUST output a counterexample, in the form of a jUnit test case. The counterexample test case MUST demonstrate the violation of the postcondition, using input values for the method that, after the execution of the method, make the postcondition invalid. You may provide the reasoning behind your output.
+If, on the other hand, you determine that the method does NOT meet the postcondition, you MUST output a counterexample, in the form of a jUnit test case. The counterexample test case MUST demonstrate the violation of the postcondition, using input values for the method that, after the execution of the method, make the postcondition invalid. The test case execution must not throw any exceptions prior to checking the postcondition. You may provide the reasoning behind your output.
+
 
 You will receive the input in the following way:
 - The source code of the class comes first, after a line containing the text “[[CODE]]”
 - The method under test, that the postcondition refers to, comes after the code, preceded by text “[[METHOD]]”
 - The postcondition follows after the method, and is preceded by text “[[POSTCONDITION]]” (note: postconditions may include quantifiers like size(X) – returns the size of the collection X; pairwiseEqual(seq1, seq2) - True iff seq1 and seq2 have the same length, and every seq1[i] == seq2[i]; isReverse(seq1, seq2) - True iff seq1 is the reverse of seq2, typeArray(X) – returns the type of the array X; getElement(X, i) – returns the i-th element of the array X; old(X) – returns the value of X before executing the method under test; etc.)
 
+
 The output must be produced as follows:
 - After text “[[VERDICT]]”, you will output “OK” if no counterexample for the method and postcondition exist, and “FAILED” otherwise.
 - If the verdict was “[[FAILED]]”, output the counterexample after the verdict, preceded by text “[[TEST]]”, in JUnit format.
+
 
 Here are some examples of inputs and corresponding outputs:
 
@@ -19,7 +22,10 @@ Here are some examples of inputs and corresponding outputs:
 [[CODE]]
 package examples;
 
+
 public class SimpleMethods {
+
+
    /**
      * Compute the minimum of two values
      *
@@ -88,8 +94,11 @@ public class MathUtil {
            result = x;
        }
 
+
        assert (true);
        return result;
+
+
      }
 }
 [[METHOD]]
@@ -116,6 +125,7 @@ public void testClamp_1() {
    int min = 0;
    int max = -1;
    int origMax = max;
+
 
    int result = jts.MathUtil.clamp(x, min, max);
 
@@ -217,12 +227,15 @@ FAILED
 public void testInsert_1() {
    DataStructures.List list = new DataStructures.List();
 
+
    list.insert(-9);
    list.insert(-9);
 
    DataStructures.List origList = list.clone();
 
+
    list.insert(-18);
+
 
    assertTrue(list.x != list.next.next.x + origList.next.next.x);
 }
