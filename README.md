@@ -1,6 +1,10 @@
 # Specvalid
 
+![text](docs/logo.png)
+
 A tool for **specification-based test generation** using LLMs to create JUnit tests that violate postconditions, validated through dynamic invariant detection with Daikon.
+
+---
 
 ## Experiments
 
@@ -10,7 +14,7 @@ A tool for **specification-based test generation** using LLMs to create JUnit te
 ./experiments/setup.sh
 ```
 
-### Run tool
+### Run test generation and validation
 
 ```bash
 # Using local models (e.g., Ollama)
