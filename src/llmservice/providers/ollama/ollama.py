@@ -23,10 +23,11 @@ class OllamaProvider:
     def ollama_execute_prompt(self, model, prompt: str, format_instructions=""):
         try:
             response = None
+            full_prompt = prompt + (format_instructions or "")
             if self.with_ccad:
-                response = self.chat_with_ccad_model(model, prompt)
+                response = self.chat_with_ccad_model(model, full_prompt)
             else:
-                response = self.chat_with_ollama_model(model, prompt)
+                response = self.chat_with_ollama_model(model, full_prompt)
 
             if response is None:
                 logging.warning(f"OllamaProvider: No response from model {model}")
