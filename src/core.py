@@ -1,7 +1,11 @@
+import json
+import os
 import shutil
 import subprocess
+
 from daikon.daikon import Daikon
 from file_operations.file_ops import FileOperations
+from generators.verification_only import VerificationOnlyGenerator
 from java_test_appender.java_test_appender import JavaTestApender
 from java_test_compiler.java_test_compiler import JavaTestCompiler
 from java_test_driver.java_test_driver import JavaTestDriver
@@ -9,14 +13,12 @@ from java_test_file_updater.java_test_file_updater import JavaTestFileUpdater
 from java_test_suite.java_test_suite import JavaTestSuite
 from llmservice.llm_service import LLMService
 from logger.logger import Logger
-
 from prompt.prompt_template import PromptID
 from services.java_llmtesgen_service import JavaLLMTestGenService
+from services.verification_only_service import VerificationOnlyService
 from subject.subject import Subject
 from testgen.java_test_generator import JavaTestGenerator
 from testgen.model_test_processor import ModelTestProcessor
-
-import os
 
 
 def select_models(
@@ -451,3 +453,88 @@ class Core:
             return True
         else:
             return False
+
+    def run_verification_only(self):
+        logger = Logger(self.logs_output_dir + "/verify_only.log")
+        logger.log(f"Running verification only for {self.subject_id}.")
+        logger.log(f"Arguments: {self.args}")
+
+        try:
+            subject = self.subject
+            verification_output_dir = _init_subdirectory(
+                self.output_dir, "verification"
+            )
+            by_model_dir = _init_subdirectory(verification_output_dir, "by_model")
+
+            generator = VerificationOnlyGenerator(subject, logger)
+            verification_service = VerificationOnlyService(subject, generator, logger)
+
+            models = select_models(
+                generator.llm_service, self.args.models_list, self.args.models_prefix
+            )
+            prompt_ids = select_prompts(self.args.prompts_list)
+
+            logger.log(
+                f"Running verification for {len(models)} models and "
+                f"{len(prompt_ids)} prompts"
+            )
+
+            results_by_model = verification_service.run(prompt_ids, models)
+
+            if not results_by_model:
+                logger.log("No verification results were produced.")
+                return
+
+            summary = {}
+            total_valid = 0
+            total_invalid = 0
+
+            for model_id, verdicts in results_by_model.items():
+                model_dir = _init_subdirectory(by_model_dir, model_id)
+                verdicts_payload = []
+                for verdict in verdicts:
+                    verdicts_payload.append(
+                        {
+                            "spec": verdict.spec,
+                            "raw_spec": verdict.raw_spec,
+                            "raw_response": verdict.raw_response,
+                            "verdict": verdict.verdict,
+                        }
+                    )
+
+                FileOperations.write_file(
+                    os.path.join(model_dir, "verdicts.json"),
+                    json.dumps(verdicts_payload, indent=2),
+                )
+
+                valid_count = sum(
+                    1 for verdict in verdicts if verdict.verdict == "VALID"
+                )
+                invalid_count = sum(
+                    1 for verdict in verdicts if verdict.verdict == "INVALID"
+                )
+                summary[model_id] = {
+                    "total_responses": len(verdicts),
+                    "valid": valid_count,
+                    "invalid": invalid_count,
+                }
+                total_valid += valid_count
+                total_invalid += invalid_count
+
+            summary["totals"] = {
+                "models": len(results_by_model),
+                "responses": total_valid + total_invalid,
+                "valid": total_valid,
+                "invalid": total_invalid,
+            }
+
+            FileOperations.write_file(
+                os.path.join(verification_output_dir, "summary.json"),
+                json.dumps(summary, indent=2),
+            )
+
+            logger.log(f"Verification results saved in {verification_output_dir}")
+        except Exception as exc:
+            logger.log_error(f"❌ Error during verification: {exc}")
+            print(f"❌ Error during verification: {exc}")
+            exit(1)
