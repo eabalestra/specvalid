@@ -1,5 +1,8 @@
 from prompt.prompt_template import Prompt, PromptID
 from prompt.templates.general.general_prompt import GeneralPrompt
+from prompt.templates.verification_only.verification_only_prompt import (
+    VerificationOnlyPrompt,
+)
 from prompt.templates.zero_shot.zero_shot_prompt import ZeroShotPrompt
 
 
@@ -10,6 +13,10 @@ class PromptTemplateFactory:
             return GeneralPrompt(PromptID.General_V1, class_code, method_code, spec)
         if prompt_id == PromptID.General_V2:
             return ZeroShotPrompt(PromptID.General_V2, class_code, method_code, spec)
+        if prompt_id == PromptID.General_V3:
+            return VerificationOnlyPrompt(
+                PromptID.General_V3, class_code, method_code, spec
+            )
         raise ValueError(f"Unknown prompt ID: {prompt_id}")
 
     @staticmethod
