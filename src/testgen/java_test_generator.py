@@ -1,18 +1,15 @@
 import os
 from typing import List
+
 from java_code_extractor.java_code_extractor import JavaCodeExtractor
 from java_test_compiler.java_test_compiler import JavaTestCompiler
 from java_test_fixer.java_test_fixer import JavaTestFixer
 from llmservice.llm_service import LLMService
-
 from logger.logger import Logger
-from prompt.template_factory import PromptTemplateFactory
-
 from prompt.prompt_template import PromptID
+from prompt.template_factory import PromptTemplateFactory
 from specs.specs import Specs
 from subject.subject import Subject
-
-import concurrent.futures
 
 MAX_COMPILE_ATTEMPTS = int(os.getenv("MAX_COMPILE_ATTEMPTS", "3"))
 
