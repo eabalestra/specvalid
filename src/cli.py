@@ -87,7 +87,13 @@ def main():
             print("> Second validation skipped due to --no-invs-filtering flag")
         else:
             core.run_invariant_filter()
+        print("> Done ✅")
     elif args.command == "mutgen":
         raise NotImplementedError("Mutgen functionality is not implemented yet.")
-
-    print("> Done ✅")
+    elif args.command == "verify-only":
+        print("> Running verification only")
+        core.run_verification_only()
+        print("> Done ✅")
+    else:
+        print(f"Error: Unknown command '{args.command}'")
+        return

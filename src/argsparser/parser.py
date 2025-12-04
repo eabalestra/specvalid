@@ -5,6 +5,55 @@ def list_of_strings(arg):
     return arg.split(",")
 
 
+def _add_shared_subject_args(command_parser: argparse.ArgumentParser) -> None:
+    command_parser.add_argument("target_class_src")
+    command_parser.add_argument("test_suite")
+    command_parser.add_argument("test_driver")
+    command_parser.add_argument("buckets_assertions_file")
+    command_parser.add_argument("method")
+    command_parser.add_argument(
+        "-m",
+        "--models",
+        type=list_of_strings,
+        dest="models_list",
+        default="",
+        help="List the LLMs to run.",
+        metavar="MODELS",
+    )
+    command_parser.add_argument(
+        "-sw",
+        "--starts-with",
+        type=str,
+        dest="models_prefix",
+        default=None,
+        help="Selects all LLMs starting with the <prefix>.",
+        metavar="PREFIX",
+    )
+    command_parser.add_argument(
+        "-p",
+        "--prompts",
+        type=list_of_strings,
+        dest="prompts_list",
+        default="",
+        help="List the prompts to use.",
+        metavar="PROMPTS",
+    )
+    command_parser.add_argument(
+        "-sf",
+        "--specfuzzer-invs",
+        dest="specfuzzer_invs_file",
+        help="Path to the specfuzzer <file>.inv.gz file. ",
+        required=False,
+    )
+    command_parser.add_argument(
+        "-sa",
+        "--specfuzzer-assertions",
+        dest="specfuzzer_assertions_file",
+        help="Path to the specfuzzer <file>.assertions file. ",
+        required=False,
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="specvalid")
 
@@ -47,53 +96,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Reuse existing raw tests if available instead of generating new ones.",
         required=False,
     )
-    testgen.add_argument("target_class_src")
-    testgen.add_argument("test_suite")
-    testgen.add_argument("test_driver")
-    testgen.add_argument("buckets_assertions_file")
-    testgen.add_argument("method")
-    testgen.add_argument(
-        "-m",
-        "--models",
-        type=list_of_strings,
-        dest="models_list",
-        default="",
-        help="List the LLMs to run.",
-        metavar="MODELS",
-    )
-    testgen.add_argument(
-        "-sw",
-        "--starts-with",
-        type=str,
-        dest="models_prefix",
-        default=None,
-        help="Selects all LLMs starting with the <prefix>.",
-        metavar="PREFIX",
-    )
-    testgen.add_argument(
-        "-p",
-        "--prompts",
-        type=list_of_strings,
-        dest="prompts_list",
-        default="",
-        help="List the prompts to use.",
-        metavar="PROMPTS",
-    )
-    testgen.add_argument(
-        "-sf",
-        "--specfuzzer-invs",
-        dest="specfuzzer_invs_file",
-        help="Path to the specfuzzer <file>.inv.gz file. ",
-        required=False,
-    )
-    testgen.add_argument(
-        "-sa",
-        "--specfuzzer-assertions",
-        dest="specfuzzer_assertions_file",
-        help="Path to the specfuzzer <file>.assertions file. ",
-        required=False,
-    )
+    _add_shared_subject_args(testgen)
 
     # mutgen command (placeholder)
     sub.add_parser("mutgen")
+
+    # verification only command
+    verification_only = sub.add_parser("verify-only")
+    _add_shared_subject_args(verification_only)
+
     return parser

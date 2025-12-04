@@ -5,6 +5,7 @@ from enum import Enum
 class PromptID(Enum):
     General_V1 = 0
     General_V2 = 1
+    General_V3 = 2
 
     @classmethod
     def all(cls):

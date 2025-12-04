@@ -1,7 +1,7 @@
 from prompt.prompt_template import Prompt
-from prompt.templates.general.template import BASE_TEMPLATE
+from prompt.templates.verification_only.template import BASE_TEMPLATE
 
-TEST_SECTION_TEMPLATE = """
+VERIFICATION_SECTION_TEMPLATE = """
 [[CODE]]
 {class_code}
 [[METHOD]]
@@ -9,14 +9,13 @@ TEST_SECTION_TEMPLATE = """
 [[POSTCONDITION]]
 {spec}
 [[VERDICT]]
-
 """
 
 
-class GeneralPrompt(Prompt):
+class VerificationOnlyPrompt(Prompt):
     def generate_prompt(self) -> str:
         self.template = BASE_TEMPLATE
-        prompt_template_section = TEST_SECTION_TEMPLATE
+        prompt_template_section = VERIFICATION_SECTION_TEMPLATE
         prompt_template_section = prompt_template_section.format(
             class_code=self.class_code, method_code=self.method_code, spec=self.spec
         )
