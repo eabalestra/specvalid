@@ -6,10 +6,10 @@ You are given:
 - One method from that class (the method under test).
 - A single postcondition assertion that refers to that method.
 
-Your task is to determine whether the method satisfies the given postcondition for all possible executions (all valid inputs and states), assuming standard Java semantics.
+Your task is to determine whether the method satisfies the given postcondition for all possible non-failing executions of the method, assuming standard Java semantics.
 
-If the method always satisfies the postcondition, you MUST consider the postcondition as VALID.
-If you find that there exists some possible execution in which the postcondition does NOT hold, you MUST consider the postcondition as INVALID.
+If the postcondition holds at the exit state of every non-failing execution of the method under test, you MUST consider the postcondition as VALID.
+If you find that there exists some non-failing execution of the method under test in which the postcondition does NOT hold, you MUST consider the postcondition as INVALID.
 
 You will receive the input in the following format:
 
