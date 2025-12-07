@@ -538,3 +538,14 @@ class Core:
             logger.log_error(f"❌ Error during verification: {exc}")
             print(f"❌ Error during verification: {exc}")
             exit(1)
+
+    def run_bucketing_augmented(self, args):
+        logger = Logger(self.logs_output_dir + "/bucketing.log")
+        logger.log(f"Running bucketing (augmented) for {self.subject_id}.")
+        logger.log(f"Arguments: {self.args}")
+        try:
+            pass
+        except Exception as e:
+            logger.log_error(f"❌ Error during bucketing: {e}")
+            print(f"❌ Error during bucketing: {e}")
+            exit(1)
