@@ -188,6 +188,41 @@ setup_daikon() {
 
 setup_daikon
 
+echo "=== Setting up Major Mutation Framework ==="
+setup_major() {
+    local major_zip="experiments/major-1.3.4_jre7.zip"
+    local major_dir="experiments/major"
+    
+    # Check if already extracted
+    if [ -d "$major_dir" ]; then
+        echo "Major directory already exists, skipping extraction..."
+        return 0
+    fi
+    
+    # Check if zip file exists
+    if [ ! -f "$major_zip" ]; then
+        echo "Error: Major zip file not found at $major_zip"
+        echo "Please ensure the file exists before running setup."
+        return 1
+    fi
+    
+    echo "Extracting Major Mutation Framework..."
+    if unzip -o "$major_zip" -d experiments/; then
+        echo "Major extracted successfully to $major_dir"
+    else
+        echo "Error: Failed to extract $major_zip"
+        return 1
+    fi
+}
+
+setup_major
+
+# Set MAJOR_HOME environment variable
+MAJOR_HOME="$(pwd)/experiments/major"
+export MAJOR_HOME
+echo "  MAJOR_HOME=$MAJOR_HOME"
+echo ""
+
 echo "=== Installing SpecValid package ==="
 install_package() {
     if pip install -e .; then
