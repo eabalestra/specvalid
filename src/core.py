@@ -16,6 +16,10 @@ from logger.logger import Logger
 from prompt.prompt_template import PromptID
 from services.java_llmtesgen_service import JavaLLMTestGenService
 from services.verification_only_service import VerificationOnlyService
+from specfuzzer.gen_mutated_traces import (
+    MutatedTraceGenerationError,
+    MutatedTraceGenerator,
+)
 from subject.subject import Subject
 from testgen.java_test_generator import JavaTestGenerator
 from testgen.model_test_processor import ModelTestProcessor
@@ -544,8 +548,141 @@ class Core:
         logger.log(f"Running bucketing (augmented) for {self.subject_id}.")
         logger.log(f"Arguments: {self.args}")
         try:
-            pass
+            models_dir = os.path.join(self.output_dir, "test", "by_model")
+            if not os.path.isdir(models_dir):
+                raise FileNotFoundError(
+                    "No per-model tests were found. Run test generation first."
+                )
+
+            compiled_models = self._get_models_with_compiled_tests(models_dir)
+            if not compiled_models:
+                raise RuntimeError(
+                    "No compiled tests found for any model. Cannot run bucketing."
+                )
+
+            logger.log(
+                f"Found {len(compiled_models)} models with compiled tests: {list(compiled_models.keys())}"
+            )
+
+            for model_id, compiled_tests_path in compiled_models.items():
+                logger.log(f"Running bucketing for model: {model_id}")
+                self._run_bucketing_for_model(model_id, compiled_tests_path, logger)
+
+        except MutatedTraceGenerationError as e:
+            logger.log_error(f"❌ Error during bucketing: {e}")
+            print(f"❌ Error during bucketing: {e}")
+            exit(1)
         except Exception as e:
             logger.log_error(f"❌ Error during bucketing: {e}")
             print(f"❌ Error during bucketing: {e}")
             exit(1)
+
+    def _run_bucketing_for_model(
+        self, model_id: str, compiled_tests_path: str, logger: Logger
+    ) -> None:
+        compiled_tests = JavaTestSuite.extract_tests_from_file(compiled_tests_path)
+        if not compiled_tests:
+            logger.log_warning(
+                f"Model {model_id} has no compiled tests. Skipping bucketing."
+            )
+            return
+
+        logger.log(f"Loaded {len(compiled_tests)} compiled tests for model {model_id}")
+
+        sanitized_suffix = self._sanitize_identifier(model_id)
+        suite_suffix = f"Augmented{sanitized_suffix}"
+
+        renamed_tests = self.subject.test_suite._rename_test_methods(  # pylint: disable=protected-access
+            compiled_tests, f"llm{sanitized_suffix}"
+        )
+
+        test_suite_augmented = JavaTestFileUpdater.prepare_test_file(
+            self.args.test_suite, suite_suffix, is_driver=False
+        )
+        driver_augmented = JavaTestFileUpdater.prepare_test_file(
+            self.args.test_driver, suite_suffix, is_driver=True
+        )
+
+        logger.log("Cleaning project before updating suites")
+        self.compiler.compile_project(clean=True)
+
+        appender = JavaTestApender()
+        appender.insert_tests_into_suite(test_suite_augmented, renamed_tests)
+        appender.insert_tests_into_driver(driver_augmented, renamed_tests)
+
+        logger.log("Compiling augmented project")
+        self.compiler.compile_project(clean=False)
+
+        bucketing_root = _init_subdirectory(
+            self.output_dir, "bucketing", preserve_existing=True
+        )
+        model_bucket_dir = _init_subdirectory(
+            bucketing_root, f"model_{sanitized_suffix}"
+        )
+        daikon_dir = _init_subdirectory(model_bucket_dir, "daikon")
+        setup_files_dir = _init_subdirectory(model_bucket_dir, "setup-files")
+
+        driver_augmented_name = os.path.basename(driver_augmented).replace(".java", "")
+        driver_package = self.subject.test_driver.get_package_name()
+        driver_augmented_fq = (
+            f"{driver_package}.{driver_augmented_name}"
+            if driver_package
+            else driver_augmented_name
+        )
+
+        logger.log(
+            f"Running DynComp and Chicory for driver {driver_augmented_fq} (model {model_id})"
+        )
+        daikon_runner = Daikon(
+            self.subject,
+            driver_augmented_name,
+            driver_augmented_fq,
+            daikon_dir,
+        )
+        daikon_runner.run_dyn_comp()
+        daikon_runner.run_chicory_dtrace_generation()
+
+        comparability_file = os.path.join(
+            daikon_dir, f"{driver_augmented_name}.decls-DynComp"
+        )
+        major_home = os.environ.get("MAJOR_HOME")
+        if not major_home:
+            raise RuntimeError(
+                "MAJOR_HOME environment variable is not set. Unable to run Major."
+            )
+
+        logger.log(
+            f"Generating mutant traces with Major + Chicory for model {model_id}"
+        )
+
+        trace_generator = MutatedTraceGenerator(
+            major_home=major_home,
+            subject_root=str(self.subject.root_dir),
+            target_class_src=self.args.target_class_src,
+            driver_fq_name=driver_augmented_fq,
+            driver_name=driver_augmented_name,
+            comparability_file=comparability_file,
+            classpath=daikon_runner.cp_for_daikon,
+            setup_output_dir=setup_files_dir,
+            logger=logger,
+        )
+
+        traces = trace_generator.generate()
+
+        logger.log(
+            f"Mutant traces ready at {trace_generator.traces_output_dir} ({len(traces)} entries)"
+        )
+
+    def _get_models_with_compiled_tests(self, models_dir: str) -> dict:
+        models = {}
+        for model_name in sorted(os.listdir(models_dir)):
+            model_path = os.path.join(models_dir, model_name)
+            compiled_tests_file = os.path.join(model_path, "compiled_tests.java")
+            if os.path.isfile(compiled_tests_file):
+                models[model_name] = compiled_tests_file
+        return models
+
+    @staticmethod
+    def _sanitize_identifier(name: str) -> str:
+        sanitized = "".join(ch for ch in name if ch.isalnum())
+        return sanitized if sanitized else "Model"

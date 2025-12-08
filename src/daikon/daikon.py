@@ -38,8 +38,12 @@ class Daikon:
         self.subject_cp = os.pathsep.join([main_classes, test_classes, build_libs])
 
         # Include both project-specific libs and global libs in classpath
-        project_libs = os.path.join(subject.root_dir, "libs", "*")
-        self.cp_for_daikon = os.pathsep.join([project_libs, "libs/*", self.subject_cp])
+        project_libs = Path(subject.root_dir) / "libs" / "*"
+        repo_root = Path(__file__).resolve().parents[2]
+        global_libs = repo_root / "libs" / "*"
+        self.cp_for_daikon = os.pathsep.join(
+            [str(project_libs), str(global_libs), self.subject_cp]
+        )
 
         self.objs_file: Optional[str] = None
 

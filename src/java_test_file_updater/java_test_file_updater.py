@@ -11,10 +11,10 @@ class JavaTestFileUpdater:
         return re.sub(r"(public\s+class\s+)(\w+)(\s*\{)", rf"\1\2{suffix}\3", content)
 
     @staticmethod
-    def rename_constructor_usages(content: str, class_name: str) -> str:
+    def rename_constructor_usages(content: str, class_name: str, suffix: str) -> str:
         escaped = re.escape(class_name)
         pattern = rf"\b({escaped})(\b\s+\w+\s*=\s*new\s+)({escaped})(\s*\()"
-        replacement = r"\1Augmented\2\3Augmented\4"
+        replacement = rf"\1{suffix}\2\3{suffix}\4"
         return re.sub(pattern, replacement, content)
 
     @staticmethod
@@ -31,7 +31,9 @@ class JavaTestFileUpdater:
 
         if is_driver:
             class_name = os.path.basename(file_path).replace("Driver.java", "0")
-            content = JavaTestFileUpdater.rename_constructor_usages(content, class_name)
+            content = JavaTestFileUpdater.rename_constructor_usages(
+                content, class_name, suffix
+            )
 
         FileOperations.write_file(new_file_path, content)
         return new_file_path
