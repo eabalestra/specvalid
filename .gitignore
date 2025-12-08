@@ -21,6 +21,9 @@ experiments/daikon-5.8.2.zip
 experiments/daikon-5.8.2/
 experiments/run-example.sh
 experiments/major/
+experiments/GAssert_binaries.zip
+experiments/run-verify-example.sh
+
 
 # Egg-info directory
 src/specvalid.egg-info
