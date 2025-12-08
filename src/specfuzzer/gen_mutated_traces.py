@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import glob
 import os
 import shutil
 import subprocess
@@ -36,7 +37,7 @@ class MutatedTraceGenerator:
         classpath: str,
         setup_output_dir: str,
         logger=None,
-        timeout_seconds: int = 60,
+        timeout_seconds: int = 10,
         chicory_timeout: int | None = None,
     ) -> None:
         self.major_home = Path(major_home).expanduser().resolve()
@@ -56,7 +57,7 @@ class MutatedTraceGenerator:
         self.driver_fq_name = driver_fq_name
         self.driver_name = driver_name
         self.comparability_file = Path(comparability_file).resolve()
-        self.classpath = classpath
+        self.classpath = self._expand_classpath(classpath)
         self.setup_output_dir = Path(setup_output_dir).resolve()
         self.logger = logger
         self.timeout_seconds = timeout_seconds
@@ -67,6 +68,17 @@ class MutatedTraceGenerator:
             self.subject_root / "build" / "classes" / "java" / "test"
         )
         self.subject_libs = self.subject_root / "libs" / "*"
+        self.repo_root = Path(__file__).resolve().parents[2]
+
+        self.major_classpath = self._expand_classpath(
+            os.pathsep.join(
+                [
+                    str(self.build_dir),
+                    str(self.subject_root / "libs" / "*.jar"),
+                    str(self.repo_root / "libs" / "*.jar"),
+                ]
+            )
+        )
 
         self.workspace_dir = self.setup_output_dir / "major_workspace"
         self.traces_output_dir = self.setup_output_dir / "mutants"
@@ -143,13 +155,10 @@ class MutatedTraceGenerator:
         self.traces_output_dir.mkdir(parents=True, exist_ok=True)
 
     def _run_major(self) -> None:
-        classpath = os.pathsep.join(
-            [str(self.build_dir), str(self.subject_root / "libs" / "*")]
-        )
         cmd = [
             str(self.major_javac),
             "-cp",
-            classpath,
+            self.major_classpath,
             "-nowarn",
             "-J-Dmajor.export.mutants=true",
             "-XMutator:ALL",
@@ -173,13 +182,10 @@ class MutatedTraceGenerator:
         return mutant_dirs
 
     def _compile_mutant(self, mutant_source: Path) -> bool:
-        classpath = os.pathsep.join(
-            [str(self.build_dir), str(self.subject_root / "libs" / "*")]
-        )
         cmd = [
             "javac",
             "-cp",
-            classpath,
+            self.major_classpath,
             "-g",
             str(mutant_source),
             "-d",
@@ -225,10 +231,16 @@ class MutatedTraceGenerator:
                 description=f"Running Chicory for mutant {index}",
                 timeout=self.chicory_timeout,
             )
-            return True
         except MutatedTraceGenerationError as exc:
-            self._log(str(exc))
-            return False
+            # Chicory may still produce dtrace/objects even when exiting non-zero
+            self._log(f"Chicory error for mutant {index}: {exc}")
+        # Accept the mutant if artifacts exist
+        if dtrace_path.exists() and objects_path.exists():
+            return True
+        self._log(
+            f"Skipping mutant {index}: missing artifacts (dtrace: {dtrace_path.exists()}, objects: {objects_path.exists()})"
+        )
+        return False
 
     def _move_mutants_log(self) -> None:
         log_path = self.workspace_dir / "mutants.log"
@@ -245,18 +257,46 @@ class MutatedTraceGenerator:
         timeout: Optional[int] = None,
     ) -> None:
         self._log(f"{description} -> {' '.join(cmd)}")
+        process = subprocess.Popen(
+            cmd,
+            cwd=str(cwd) if cwd else None,
+            preexec_fn=os.setsid,  # Create a new process group
+        )
         try:
-            subprocess.run(
-                cmd,
-                cwd=str(cwd) if cwd else None,
-                check=True,
-                timeout=timeout or self.timeout_seconds,
-            )
+            process.wait(timeout=timeout or self.timeout_seconds)
+            if process.returncode != 0:
+                raise subprocess.CalledProcessError(process.returncode, cmd)
+        except subprocess.TimeoutExpired as exc:  # pragma: no cover - runtime guard
+            # Kill the entire process group
+            os.killpg(os.getpgid(process.pid), 9)
+            process.wait()  # Wait for the process to be killed
+            raise MutatedTraceGenerationError(
+                f"Command timed out after {timeout or self.timeout_seconds}s ({description})"
+            ) from exc
         except subprocess.CalledProcessError as exc:
             raise MutatedTraceGenerationError(
                 f"Command failed ({description}): {exc}"
             ) from exc
-        except subprocess.TimeoutExpired as exc:  # pragma: no cover - runtime guard
-            raise MutatedTraceGenerationError(
-                f"Command timed out after {self.timeout_seconds}s ({description})"
-            ) from exc
+
+    def _build_classpath(self, entries: List[Path]) -> str:
+        cp_parts: List[str] = []
+        for entry in entries:
+            pattern = str(entry)
+            if "*" in pattern:
+                cp_parts.extend(glob.glob(pattern))
+            elif Path(pattern).exists():
+                cp_parts.append(pattern)
+        cp_parts.extend(glob.glob(str(self.repo_root / "libs" / "*.jar")))
+        return os.pathsep.join(cp_parts)
+
+    def _expand_classpath(self, cp_str: str) -> str:
+        parts = cp_str.split(os.pathsep)
+        expanded: List[str] = []
+        for part in parts:
+            if not part:
+                continue
+            if "*" in part:
+                expanded.extend(glob.glob(part))
+            elif Path(part).exists():
+                expanded.append(part)
+        return os.pathsep.join(expanded)
