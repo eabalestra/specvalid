@@ -100,11 +100,8 @@ class Core:
             JavaTestDriver(args.test_driver),
         )
         self.compiler = JavaTestCompiler(args.target_class_src)
-        # Work with absolute paths to avoid path resolution issues when changing cwd
-        self.output_dir = str(
-            Path(
-                _create_subject_output_directory(args.output_dir, self.subject_id)
-            ).resolve()
+        self.output_dir = _create_subject_output_directory(
+            args.output_dir, self.subject_id
         )
         self.logs_output_dir = _init_subdirectory(
             self.output_dir, "logs", preserve_existing=True
@@ -236,6 +233,15 @@ class Core:
         logger.log(f"Arguments: {self.args}")
 
         models_dir = f"{self.output_dir}/test/by_model"
+
+        if not os.path.isdir(models_dir):
+            msg = (
+                "❌ No per-model tests were found. "
+                "Run test generation before invariant filtering."
+            )
+            logger.log_error(msg)
+            print(msg)
+            return
 
         available_models = []
         for model_name in os.listdir(models_dir):
@@ -372,6 +378,7 @@ class Core:
             logger.log(
                 f"Run Daikon Invariant Checker from driver: {augmented_test_driver_name}"
             )
+
             invalid_invs = daikon.run_invariant_checker(self.args.specfuzzer_invs_file)
 
             # Build fully-qualified class name relative to src/main/java
@@ -547,7 +554,7 @@ class Core:
             print(f"❌ Error during verification: {exc}")
             exit(1)
 
-    def run_bucketing_augmented(self, args):
+    def run_bucketing_augmented(self):
         logger = Logger(self.logs_output_dir + "/bucketing.log")
         logger.log(f"Running bucketing (augmented) for {self.subject_id}.")
         logger.log(f"Arguments: {self.args}")
@@ -639,19 +646,23 @@ class Core:
         logger.log(
             f"Running DynComp and Chicory for driver {driver_augmented_fq} (model {model_id})"
         )
+
         daikon_runner = Daikon(
             self.subject,
             driver_augmented_name,
             driver_augmented_fq,
             daikon_dir,
         )
+
         daikon_runner.run_dyn_comp()
         daikon_runner.run_chicory_dtrace_generation()
 
         comparability_file = os.path.join(
             daikon_dir, f"{driver_augmented_name}.decls-DynComp"
         )
+
         major_home = os.environ.get("MAJOR_HOME")
+
         if not major_home:
             raise RuntimeError(
                 "MAJOR_HOME environment variable is not set. Unable to run Major."
