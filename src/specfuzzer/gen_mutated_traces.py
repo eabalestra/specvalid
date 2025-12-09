@@ -192,10 +192,12 @@ class MutatedTraceGenerator:
             str(self.build_dir),
         ]
         try:
+            # Use a shorter timeout for compilation (5 seconds should be plenty)
             self._run_command(
                 cmd,
                 cwd=self.workspace_dir,
                 description=f"Compiling mutant source {mutant_source}",
+                timeout=5,
             )
             return True
         except MutatedTraceGenerationError as exc:
@@ -204,8 +206,10 @@ class MutatedTraceGenerator:
 
     def _run_chicory(self, index: int, dtrace_path: Path, objects_path: Path) -> bool:
         ppt_pattern = f"{self.driver_name}.*"
-        dtrace_arg = os.path.relpath(dtrace_path, self.workspace_dir)
-        objects_arg = os.path.relpath(objects_path, self.workspace_dir)
+        # Chicory needs: dtrace filename (relative to --output-dir) and objects file path
+        # Since we run from workspace_dir, make paths relative to it
+        dtrace_filename = dtrace_path.name
+        objects_relative = os.path.relpath(objects_path, self.workspace_dir)
         cmd = [
             "java",
             "-cp",
@@ -220,9 +224,9 @@ class MutatedTraceGenerator:
             "--ppt-omit-pattern",
             "org.junit.*",
             "--dtrace-file",
-            dtrace_arg,
+            dtrace_filename,
             self.driver_fq_name,
-            objects_arg,
+            objects_relative,  # Relative path from workspace_dir to objects file
         ]
         try:
             self._run_command(
@@ -256,9 +260,10 @@ class MutatedTraceGenerator:
         description: str,
         timeout: Optional[int] = None,
     ) -> None:
-        self._log(f"{description} -> {' '.join(cmd)}")
+        cmd_strs = [str(part) for part in cmd]
+        self._log(f"{description} -> {' '.join(cmd_strs)}")
         process = subprocess.Popen(
-            cmd,
+            cmd_strs,
             cwd=str(cwd) if cwd else None,
             preexec_fn=os.setsid,  # Create a new process group
         )
@@ -296,7 +301,10 @@ class MutatedTraceGenerator:
             if not part:
                 continue
             if "*" in part:
-                expanded.extend(glob.glob(part))
+                # Expand glob patterns and convert to absolute paths
+                matched = glob.glob(part)
+                expanded.extend([str(Path(p).resolve()) for p in matched])
             elif Path(part).exists():
-                expanded.append(part)
+                # Convert to absolute path
+                expanded.append(str(Path(part).resolve()))
         return os.pathsep.join(expanded)
