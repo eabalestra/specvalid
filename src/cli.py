@@ -82,11 +82,11 @@ def main():
     print(f"> Running Specvalid for subject: {core.subject_id}")
     if args.command == "testgen":
         print("> Running test generation")
-        # core.run_testgen(args)
-        # if args.no_invs_filtering:
-        #     print("> Second validation skipped due to --no-invs-filtering flag")
-        # else:
-        #     core.run_invariant_filter()
+        core.run_testgen(args)
+        if args.no_invs_filtering:
+            print("> Second validation skipped due to --no-invs-filtering flag")
+        else:
+            core.run_invariant_filter()
         core.run_bucketing_augmented()
         print("> Done ✅")
     elif args.command == "mutgen":
