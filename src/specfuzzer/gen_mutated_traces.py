@@ -37,7 +37,7 @@ class MutatedTraceGenerator:
         classpath: str,
         setup_output_dir: str,
         logger=None,
-        timeout_seconds: int = 300,
+        timeout_seconds: int = 600,
         chicory_timeout: int | None = None,
     ) -> None:
         self.major_home = Path(major_home).expanduser().resolve()

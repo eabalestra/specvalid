@@ -704,6 +704,8 @@ class Core:
             classpath=daikon_runner.cp_for_daikon,
             setup_output_dir=setup_files_dir,
             logger=logger,
+            timeout_seconds=600,
+            chicory_timeout=600,
         )
 
         traces = trace_generator.generate()
