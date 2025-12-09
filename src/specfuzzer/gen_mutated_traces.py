@@ -37,7 +37,7 @@ class MutatedTraceGenerator:
         classpath: str,
         setup_output_dir: str,
         logger=None,
-        timeout_seconds: int = 10,
+        timeout_seconds: int = 300,
         chicory_timeout: int | None = None,
     ) -> None:
         self.major_home = Path(major_home).expanduser().resolve()
@@ -197,7 +197,7 @@ class MutatedTraceGenerator:
                 cmd,
                 cwd=self.workspace_dir,
                 description=f"Compiling mutant source {mutant_source}",
-                timeout=5,
+                timeout=10,
             )
             return True
         except MutatedTraceGenerationError as exc:
