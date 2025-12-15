@@ -1,6 +1,6 @@
+import csv
 import os
 import re
-import csv
 
 
 def load_subject_mapping(subjects_file):
@@ -136,6 +136,58 @@ def extract_spec_counts(invfilter_log_file):
     except Exception as e:
         print(f"Error processing {invfilter_log_file}: {str(e)}")
         return 0, 0
+
+
+def extract_specfuzzer_buckets_count(invfilter_log_file):
+    """
+    Extract the number of specs in SpecFuzzer buckets file from invfilter.log.
+    """
+    try:
+        with open(invfilter_log_file, "r") as f:
+            content = f.read()
+            # Look for pattern like "Specs in SpecFuzzer buckets file: N"
+            match = re.search(r"Specs in SpecFuzzer buckets.*?: (\d+)", content)
+            if match:
+                return int(match.group(1))
+        return 0
+    except Exception as e:
+        print(f"Error extracting SpecFuzzer buckets count: {str(e)}")
+        return 0
+
+
+def extract_bucketing_stats(bucketing_log_file):
+    """
+    Extract bucketing statistics per model from bucketing.log.
+    Returns dict with {model_id: specs_in_buckets}
+    """
+    model_stats = {}
+    try:
+        with open(bucketing_log_file, "r") as f:
+            content = f.read()
+            # Look for patterns like "Bucket stats: ['buckets=37', 'specs=37']"
+            # And correlate with "Running bucketing for model: MODEL_NAME"
+            lines = content.split("\n")
+            current_model = None
+
+            for line in lines:
+                # Detect current model being processed
+                if "Running bucketing for model:" in line:
+                    match = re.search(r"Running bucketing for model: (\S+)", line)
+                    if match:
+                        current_model = match.group(1)
+
+                # Extract bucket stats for current model
+                if current_model and "Bucket stats:" in line:
+                    # Extract specs count from pattern like "Bucket stats: ['buckets=37', 'specs=37']"
+                    specs_match = re.search(r"'specs=(\d+)'", line)
+                    if specs_match:
+                        model_stats[current_model] = int(specs_match.group(1))
+                        current_model = None  # Reset after finding stats
+
+        return model_stats
+    except Exception as e:
+        print(f"Error extracting bucketing stats: {str(e)}")
+        return {}
 
 
 def extract_model_stats(model_output_dir):
@@ -319,13 +371,13 @@ def get_best_model_per_subject(unified_results, subjects_order):
     for subject in subjects_order:
         if subject in subjects_summary:
             results = subjects_summary[subject]
-            # Sort by specs filtered first, then by tests compiled, then fixed
+            # Sort by specs validated first, then by tests compiled, then fixed
             best_result = max(
                 results,
                 key=lambda x: (
-                    x["SPECS_FILTERED"],
-                    x["TESTS_COMPILED"],
-                    x["TESTS_FIXED"],
+                    x["SPECS_VALIDATED"],
+                    x["LLM_TESTS_COMPILED"],
+                    x["LLM_TESTS_FIXED"],
                 ),
             )
 
@@ -335,23 +387,27 @@ def get_best_model_per_subject(unified_results, subjects_order):
                     "CLASS": best_result["CLASS"],
                     "METHOD": best_result["METHOD"],
                     "BEST_MODEL": best_result["MODEL"],
-                    "SPECS_AVAILABLE": best_result["SPECS_AVAILABLE"],
-                    "TESTS_GENERATED": best_result["TESTS_GENERATED"],
-                    "TESTS_FIXED": best_result["TESTS_FIXED"],
-                    "TESTS_COMPILED": best_result["TESTS_COMPILED"],
-                    "SPECS_FILTERED": best_result["SPECS_FILTERED"],
+                    "SPECS_TOTAL": best_result["SPECS_TOTAL"],
+                    "SPECS_BUCKETS_BASELINE": best_result["SPECS_BUCKETS_BASELINE"],
+                    "LLM_TESTS_GENERATED": best_result["LLM_TESTS_GENERATED"],
+                    "LLM_TESTS_FIXED": best_result["LLM_TESTS_FIXED"],
+                    "LLM_TESTS_COMPILED": best_result["LLM_TESTS_COMPILED"],
+                    "SPECS_VALIDATED": best_result["SPECS_VALIDATED"],
+                    "SPECS_BUCKETS_FINAL": best_result["SPECS_BUCKETS_FINAL"],
+                }
+            )       "SPECS_BUCKETS_FINAL": best_result["SPECS_BUCKETS_FINAL"],
                 }
             )
 
-    # Add any remaining subjects that weren't in the subjects file
+    return subject_best_models
     for subject, results in subjects_summary.items():
         if subject not in subjects_order:
             best_result = max(
                 results,
                 key=lambda x: (
-                    x["SPECS_FILTERED"],
-                    x["TESTS_COMPILED"],
-                    x["TESTS_FIXED"],
+                    x["SPECS_VALIDATED"],
+                    x["LLM_TESTS_COMPILED"],
+                    x["LLM_TESTS_FIXED"],
                 ),
             )
 
@@ -362,10 +418,16 @@ def get_best_model_per_subject(unified_results, subjects_order):
                     "METHOD": best_result["METHOD"],
                     "BEST_MODEL": best_result["MODEL"],
                     "SPECS_AVAILABLE": best_result["SPECS_AVAILABLE"],
+                    "SPECS_IN_BUCKETS_SPECFUZZER": best_result[
+                        "SPECS_IN_BUCKETS_SPECFUZZER"
+                    ],
                     "TESTS_GENERATED": best_result["TESTS_GENERATED"],
                     "TESTS_FIXED": best_result["TESTS_FIXED"],
                     "TESTS_COMPILED": best_result["TESTS_COMPILED"],
                     "SPECS_FILTERED": best_result["SPECS_FILTERED"],
+                    "SPECS_IN_BUCKETS_SPECVALID": best_result[
+                        "SPECS_IN_BUCKETS_SPECVALID"
+                    ],
                 }
             )
 
@@ -421,8 +483,18 @@ def main():
 
         # Extract specifications stats (consistent across all models for a subject)
         specs_in_buckets, filtered_specs = 0, 0
+        specfuzzer_buckets_specs = 0
         if os.path.exists(invfilter_log_file):
             specs_in_buckets, filtered_specs = extract_spec_counts(invfilter_log_file)
+            specfuzzer_buckets_specs = extract_specfuzzer_buckets_count(
+                invfilter_log_file
+            )
+
+        # Extract bucketing stats per model
+        bucketing_log_file = os.path.join(base_dir, subject, "logs", "bucketing.log")
+        model_bucketing_stats = {}
+        if os.path.exists(bucketing_log_file):
+            model_bucketing_stats = extract_bucketing_stats(bucketing_log_file)
 
         # Extract model-specific statistics
         model_stats = extract_model_stats(test_output_dir)
@@ -432,16 +504,21 @@ def main():
             rates = calculate_success_rates(stats)
             gen_to_fix_rate, fix_to_comp_rate, overall_rate = rates
 
+            # Get bucketing stats for this model
+            specvalid_buckets_specs = model_bucketing_stats.get(model_id, 0)
+
             unified_result = {
                 "SUBJECT": mapped_subject,
                 "CLASS": class_name,
                 "METHOD": method_name,
                 "MODEL": model_id,
-                "SPECS_AVAILABLE": specs_in_buckets,
-                "TESTS_GENERATED": stats["raw_tests"],
-                "TESTS_FIXED": stats["fixed_tests"],
-                "TESTS_COMPILED": stats["compiled_tests"],
-                "SPECS_FILTERED": stats["filtered_specs"],
+                "SPECS_TOTAL": specs_in_buckets,
+                "SPECS_BUCKETS_BASELINE": specfuzzer_buckets_specs,
+                "LLM_TESTS_GENERATED": stats["raw_tests"],
+                "LLM_TESTS_FIXED": stats["fixed_tests"],
+                "LLM_TESTS_COMPILED": stats["compiled_tests"],
+                "SPECS_VALIDATED": stats["filtered_specs"],
+                "SPECS_BUCKETS_FINAL": specvalid_buckets_specs,
             }
             unified_results.append(unified_result)
 
@@ -457,11 +534,13 @@ def main():
                 "CLASS",
                 "METHOD",
                 "MODEL",
-                "SPECS_AVAILABLE",
-                "TESTS_GENERATED",
-                "TESTS_FIXED",
-                "TESTS_COMPILED",
-                "SPECS_FILTERED",
+                "SPECS_TOTAL",
+                "SPECS_BUCKETS_BASELINE",
+                "LLM_TESTS_GENERATED",
+                "LLM_TESTS_FIXED",
+                "LLM_TESTS_COMPILED",
+                "SPECS_VALIDATED",
+                "SPECS_BUCKETS_FINAL",
             ]
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
@@ -500,11 +579,13 @@ def main():
                     "CLASS",
                     "METHOD",
                     "BEST_MODEL",
-                    "SPECS_AVAILABLE",
-                    "TESTS_GENERATED",
-                    "TESTS_FIXED",
-                    "TESTS_COMPILED",
-                    "SPECS_FILTERED",
+                    "SPECS_TOTAL",
+                    "SPECS_BUCKETS_BASELINE",
+                    "LLM_TESTS_GENERATED",
+                    "LLM_TESTS_FIXED",
+                    "LLM_TESTS_COMPILED",
+                    "SPECS_VALIDATED",
+                    "SPECS_BUCKETS_FINAL",
                 ]
                 writer = csv.DictWriter(f, fieldnames=fieldnames)
                 writer.writeheader()
@@ -592,8 +673,7 @@ def main():
 
     else:
         print(
-            "No results found - check that output directory contains "
-            "processed subjects"
+            "No results found - check that output directory contains processed subjects"
         )
 
 

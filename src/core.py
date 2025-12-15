@@ -277,6 +277,28 @@ class Core:
             f"{available_models}"
         )
 
+        # Log the number of specs in the SpecFuzzer buckets file (baseline)
+        try:
+            with open(self.args.buckets_assertions_file, "r") as f:
+                specfuzzer_buckets_lines = [
+                    line.strip()
+                    for line in f
+                    if line.strip()
+                    and not line.startswith("=")
+                    and not line.startswith("buckets=")
+                    and not line.startswith("specs=")
+                    and ":::OBJECT" not in line
+                    and ":::POSTCONDITION" not in line
+                    and ":::ENTER" not in line
+                    and ":::EXIT" not in line
+                ]
+                specfuzzer_buckets_count = len(specfuzzer_buckets_lines)
+                logger.log(
+                    f"Specs in SpecFuzzer buckets file: {specfuzzer_buckets_count}"
+                )
+        except Exception as e:
+            logger.log_warning(f"Could not count SpecFuzzer buckets specs: {e}")
+
         for model in available_models:
             print(f"> Running invariant filtering for tests from model: {model}")
             logger.log(f"Running invariant filtering for tests from model: {model}")
