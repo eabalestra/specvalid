@@ -1,6 +1,7 @@
 import csv
 import os
 import re
+from collections import defaultdict
 
 
 def load_subject_mapping(subjects_file):
@@ -578,6 +579,77 @@ def main():
             writer.writeheader()
             writer.writerows(unified_results)
 
+        # Additionally, generate per-model CSVs and a summary-by-model table
+        by_model = defaultdict(list)
+        for row in unified_results:
+            by_model[row["MODEL"]].append(row)
+
+        # Directory for per-model outputs
+        per_model_dir = "experiments/results/by_model"
+        os.makedirs(per_model_dir, exist_ok=True)
+
+        def _safe_name(name: str) -> str:
+            return re.sub(r"[^A-Za-z0-9_.-]", "_", name)
+
+        # Build summary rows while writing individual model CSVs
+        summary_rows = []
+        for model, rows in by_model.items():
+            model_file = os.path.join(per_model_dir, f"{_safe_name(model)}.csv")
+            with open(model_file, "w", newline="") as f:
+                fieldnames = [
+                    "SUBJECT",
+                    "CLASS",
+                    "METHOD",
+                    "MODEL",
+                    "SPECFUZZER_SPECS_PRE-BUCKET",
+                    "SPECFUZZER_SPECS_POST-BUCKET",
+                    "TESTS_GENERATED_BY_LLM",
+                    "TESTS_COMPILED",
+                    "NEW_SPECS_FILTERED_PRE-BUCKET",
+                    "NEW_SPECS_POST-BUCKET",
+                ]
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(rows)
+
+            total_generated = sum(r["TESTS_GENERATED_BY_LLM"] for r in rows)
+            total_compiled = sum(r["TESTS_COMPILED"] for r in rows)
+            total_specs_filtered_pre = sum(
+                r["NEW_SPECS_FILTERED_PRE-BUCKET"] for r in rows
+            )
+            total_specs_post_bucket = sum(r["NEW_SPECS_POST-BUCKET"] for r in rows)
+            success_rate = (
+                (total_compiled / total_generated * 100) if total_generated > 0 else 0.0
+            )
+
+            summary_rows.append(
+                {
+                    "MODEL": model,
+                    "SUBJECTS": len({r["SUBJECT"] for r in rows}),
+                    "TESTS_GENERATED_TOTAL": total_generated,
+                    "TESTS_COMPILED_TOTAL": total_compiled,
+                    "SUCCESS_RATE_%": round(success_rate, 2),
+                    "NEW_SPECS_FILTERED_PRE-BUCKET_TOTAL": total_specs_filtered_pre,
+                    "NEW_SPECS_POST-BUCKET_TOTAL": total_specs_post_bucket,
+                }
+            )
+
+        # Write the summary-by-model table (more detailed than best_performing_models)
+        summary_by_model_file = "experiments/results/summary_by_model.csv"
+        with open(summary_by_model_file, "w", newline="") as f:
+            fieldnames = [
+                "MODEL",
+                "SUBJECTS",
+                "TESTS_GENERATED_TOTAL",
+                "TESTS_COMPILED_TOTAL",
+                "SUCCESS_RATE_%",
+                "NEW_SPECS_FILTERED_PRE-BUCKET_TOTAL",
+                "NEW_SPECS_POST-BUCKET_TOTAL",
+            ]
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(sorted(summary_rows, key=lambda r: r["MODEL"]))
+
         # Generate best performing models summary
         best_models = get_best_performing_models(unified_results)
         best_models_file = "experiments/results/best_performing_models.csv"
@@ -624,6 +696,9 @@ def main():
             print(f"Best model per subject summary written to {subject_summary_file}")
 
         print(f"Comprehensive results written to {main_csv_file}")
+        print(
+            "Per-model detailed CSVs written to experiments/results/by_model and summary_by_model.csv"
+        )
 
         # Display summary following priority order
         print("\n" + "=" * 80)
