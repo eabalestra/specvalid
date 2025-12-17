@@ -206,19 +206,33 @@ def extract_bucket_specs_counts(bucketing_dir, class_name, method_name):
 def count_specs_in_file(filepath):
     """
     Count the number of valid specs in an assertions file.
+    For bucket files (*-buckets.assertions), read the specs= header.
+    For regular assertion files, count lines manually.
     """
     if not os.path.exists(filepath):
         return 0
 
     try:
         with open(filepath, "r") as f:
-            specs = {line.strip() for line in f}
+            lines = f.readlines()
+
+        # Check if this is a buckets file with header
+        if filepath.endswith("-buckets.assertions") and len(lines) > 0:
+            # Look for "specs=" in first few lines
+            for line in lines[:5]:
+                if line.startswith("specs="):
+                    return int(line.strip().split("=")[1])
+
+        # Fall back to manual counting for regular assertion files
+        specs = {line.strip() for line in lines}
 
         # Filter out separators and special entries
         specs = {
             item
             for item in specs
             if item
+            and not item.startswith("buckets=")
+            and not item.startswith("specs=")
             and not item.startswith(
                 "==========================================================================="
             )
