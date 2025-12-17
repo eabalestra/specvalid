@@ -421,6 +421,10 @@ def main():
     # List to store results - unified approach
     unified_results = []
 
+    # Keep ordered subject metadata (subject, class, method) to ensure coverage per model
+    ordered_subject_entries = []
+    seen_subjects = set()
+
     # Find all subject directories that actually exist in output
     existing_subjects = [
         d for d in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, d))
@@ -429,29 +433,46 @@ def main():
     # Create mapping between actual directory names and subject info
     name_mapping = create_name_mapping(subjects_map, existing_subjects)
 
-    # Create ordered list based on subjects file, but using actual directory names
-    ordered_existing_subjects = []
+    # Build ordered processing list: start with subjects file order, then extras
+    processing_list = []  # entries: (mapped_subject, actual_dir_name_or_none)
+    used_existing = set()
 
-    # First, add subjects in the order from subjects file
     for subject in subjects_order:
-        # Find the actual directory name that corresponds to this subject
+        existing_match = None
         for existing_subject, (mapped_subject, _) in name_mapping.items():
             if mapped_subject == subject:
-                ordered_existing_subjects.append(existing_subject)
+                existing_match = existing_subject
+                used_existing.add(existing_subject)
                 break
+        processing_list.append((subject, existing_match))
 
-    # Add any remaining subjects that weren't in the subjects file
+    # Add any remaining subjects that weren't in the subjects file (extra outputs)
     for existing_subject in existing_subjects:
-        if existing_subject not in ordered_existing_subjects:
-            ordered_existing_subjects.append(existing_subject)
+        if existing_subject not in used_existing:
+            mapped_subject, _info = name_mapping.get(
+                existing_subject, (existing_subject, ("", ""))
+            )
+            processing_list.append((mapped_subject, existing_subject))
 
     # Process subjects in order - collect all data in one pass
-    for subject in ordered_existing_subjects:
-        # Get class and method names from mapping
-        if subject in name_mapping:
-            mapped_subject, (class_name, method_name) = name_mapping[subject]
+    for mapped_subject, actual_dir in processing_list:
+        # Get class and method names from subjects_map (preferred) or mapping
+        if mapped_subject in subjects_map:
+            class_name, method_name = subjects_map[mapped_subject]
+        elif actual_dir and actual_dir in name_mapping:
+            _mapped, (class_name, method_name) = name_mapping[actual_dir]
         else:
-            mapped_subject, class_name, method_name = subject, "", ""
+            class_name, method_name = "", ""
+
+        if mapped_subject not in seen_subjects:
+            ordered_subject_entries.append(
+                {
+                    "SUBJECT": mapped_subject,
+                    "CLASS": class_name,
+                    "METHOD": method_name,
+                }
+            )
+            seen_subjects.add(mapped_subject)
 
         # Extract simple class name for file paths
         simple_class_name = (
@@ -459,10 +480,19 @@ def main():
         )
 
         # Paths to the log files and directories
-        testgen_log_file = os.path.join(base_dir, subject, "logs", "testgen.log")
-        invfilter_log_file = os.path.join(base_dir, subject, "logs", "invfilter.log")
-        bucketing_dir = os.path.join(base_dir, subject, "bucketing")
-        test_output_dir = os.path.join(base_dir, subject, "test")
+        if actual_dir:
+            testgen_log_file = os.path.join(base_dir, actual_dir, "logs", "testgen.log")
+            invfilter_log_file = os.path.join(
+                base_dir, actual_dir, "logs", "invfilter.log"
+            )
+            bucketing_dir = os.path.join(base_dir, actual_dir, "bucketing")
+            test_output_dir = os.path.join(base_dir, actual_dir, "test")
+        else:
+            # Subject not present in outputs; paths point to nowhere
+            testgen_log_file = ""
+            invfilter_log_file = ""
+            bucketing_dir = ""
+            test_output_dir = ""
 
         # Try to get specs from specfuzzer-subject-results
         specs_dir = os.environ.get(
@@ -489,23 +519,23 @@ def main():
 
         # Extract test counts per model from testgen.log
         model_test_counts = {}
-        if os.path.exists(testgen_log_file):
+        if testgen_log_file and os.path.exists(testgen_log_file):
             model_test_counts = extract_test_counts(testgen_log_file)
 
         # Extract NEW_SPECS_FILTERED_PRE-BUCKET per model from invfilter.log
         specs_filtered_by_model = {}
-        if os.path.exists(invfilter_log_file):
+        if invfilter_log_file and os.path.exists(invfilter_log_file):
             specs_filtered_by_model = extract_spec_counts(invfilter_log_file)
 
         # Extract NEW_SPECS_POST-BUCKET per model from bucketing directory
         bucket_specs_by_model = {}
-        if os.path.exists(bucketing_dir):
+        if bucketing_dir and os.path.exists(bucketing_dir):
             bucket_specs_by_model = extract_bucket_specs_counts(
                 bucketing_dir, simple_class_name, method_name
             )
 
         # Get list of all models from test output dir
-        model_stats = extract_model_stats(test_output_dir)
+        model_stats = extract_model_stats(test_output_dir) if test_output_dir else {}
 
         # Collect all model names and normalize them
         # Use model names from testgen.log as the canonical source
@@ -517,6 +547,10 @@ def main():
         if not all_models:
             all_models.update(model_stats.keys())
             all_models.update(specs_filtered_by_model.keys())
+
+        # If still none, create a placeholder model so the subject appears in CSV
+        if not all_models:
+            all_models.add("NO_MODEL_OUTPUT")
 
         # Create unified results with proper priority ordering
         for model_id in all_models:
@@ -594,6 +628,28 @@ def main():
         # Build summary rows while writing individual model CSVs
         summary_rows = []
         for model, rows in by_model.items():
+            # Ensure every subject appears for every model; fill missing with zeros
+            rows_by_subject = {r["SUBJECT"]: r for r in rows}
+            complete_rows = []
+            for subj_entry in ordered_subject_entries:
+                subj = subj_entry["SUBJECT"]
+                if subj in rows_by_subject:
+                    complete_rows.append(rows_by_subject[subj])
+                else:
+                    complete_rows.append(
+                        {
+                            "SUBJECT": subj,
+                            "CLASS": subj_entry["CLASS"],
+                            "METHOD": subj_entry["METHOD"],
+                            "MODEL": model,
+                            "SPECFUZZER_SPECS_PRE-BUCKET": 0,
+                            "SPECFUZZER_SPECS_POST-BUCKET": 0,
+                            "TESTS_GENERATED_BY_LLM": 0,
+                            "TESTS_COMPILED": 0,
+                            "NEW_SPECS_FILTERED_PRE-BUCKET": 0,
+                            "NEW_SPECS_POST-BUCKET": 0,
+                        }
+                    )
             model_file = os.path.join(per_model_dir, f"{_safe_name(model)}.csv")
             with open(model_file, "w", newline="") as f:
                 fieldnames = [
@@ -610,14 +666,16 @@ def main():
                 ]
                 writer = csv.DictWriter(f, fieldnames=fieldnames)
                 writer.writeheader()
-                writer.writerows(rows)
+                writer.writerows(complete_rows)
 
-            total_generated = sum(r["TESTS_GENERATED_BY_LLM"] for r in rows)
-            total_compiled = sum(r["TESTS_COMPILED"] for r in rows)
+            total_generated = sum(r["TESTS_GENERATED_BY_LLM"] for r in complete_rows)
+            total_compiled = sum(r["TESTS_COMPILED"] for r in complete_rows)
             total_specs_filtered_pre = sum(
-                r["NEW_SPECS_FILTERED_PRE-BUCKET"] for r in rows
+                r["NEW_SPECS_FILTERED_PRE-BUCKET"] for r in complete_rows
             )
-            total_specs_post_bucket = sum(r["NEW_SPECS_POST-BUCKET"] for r in rows)
+            total_specs_post_bucket = sum(
+                r["NEW_SPECS_POST-BUCKET"] for r in complete_rows
+            )
             success_rate = (
                 (total_compiled / total_generated * 100) if total_generated > 0 else 0.0
             )

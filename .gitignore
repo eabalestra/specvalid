@@ -30,3 +30,6 @@ src/specvalid.egg-info
 
 # TO DO
 TODO.md
+
+# Environment variables file
+.env
