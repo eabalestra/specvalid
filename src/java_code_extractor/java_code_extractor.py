@@ -69,7 +69,7 @@ class JavaCodeExtractor:
             return False
         if line.startswith("@"):
             return False
-        if re.search(r"[;{}()=<>\\[\\]]", line):
+        if any(ch in line for ch in ";{}()=<>[]"):
             return False
         if re.search(
             r"\b(public|protected|private|static|final|class|void|new|if|for|while|"
@@ -316,21 +316,21 @@ class JavaCodeExtractor:
                 line, in_block_comment
             )
             if test_start_pattern.search(sanitized):
-                if test_case_started and not entered_body:
+                if test_case_started:
+                    # New @Test while inside a body implies an unbalanced prior test.
                     extracted_test = []
                     brace_count = 0
                     entered_body = False
                     found_signature = False
                     lines_since_start = 0
                     lines_since_signature = 0
-                if not test_case_started:
-                    test_case_started = True
-                    brace_count = 0
-                    entered_body = False
-                    found_signature = False
-                    lines_since_start = 0
-                    lines_since_signature = 0
-                    extracted_test = []
+                test_case_started = True
+                brace_count = 0
+                entered_body = False
+                found_signature = False
+                lines_since_start = 0
+                lines_since_signature = 0
+                extracted_test = []
 
             if test_case_started:
                 extracted_test.append(line)

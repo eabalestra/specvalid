@@ -45,7 +45,7 @@ class JavaTestFixer:
             return False
         if line.startswith("@"):
             return False
-        if re.search(r"[;{}()=<>\\[\\]]", line):
+        if any(ch in line for ch in ";{}()=<>[]"):
             return False
         if re.search(
             r"\b(public|protected|private|static|final|class|void|new|if|for|while|"
@@ -392,6 +392,132 @@ class JavaTestFixer:
 
     @staticmethod
     def remove_assertions_from_test(test: str) -> str:
+        def restore_commented_code_lines(source: str) -> str:
+            decl_assign_pattern = re.compile(
+                r"^(?:final\s+)?[A-Za-z_$][\w$\.<>\\[\\],\\s?]*\s+"
+                r"[A-Za-z_$][\w$]*\s*(?:=|\+=|-=|\*=|/=|%=|<<=|>>=|>>>=|&=|\|=|\^=)\s*.+;$"
+            )
+            assign_pattern = re.compile(
+                r"^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*\s*"
+                r"(?:=|\+=|-=|\*=|/=|%=|<<=|>>=|>>>=|&=|\|=|\^=)\s*.+;$"
+            )
+            restored = []
+            for line in source.split("\n"):
+                match = re.match(r"^(\s*)//\s*(.*)$", line)
+                if not match:
+                    restored.append(line)
+                    continue
+                indent, code = match.group(1), match.group(2)
+                stripped = code.strip()
+                if not stripped:
+                    restored.append(line)
+                    continue
+                if re.match(r"^\d+\.\s+\w", stripped) or re.match(
+                    r"^(?:-|\*)\s+\w", stripped
+                ):
+                    restored.append(line)
+                    continue
+                if stripped.startswith(("import ", "package ")):
+                    restored.append(line)
+                    continue
+                if "```" in stripped or "`" in stripped:
+                    restored.append(line)
+                    continue
+                if "..." in stripped and '"' not in stripped and "'" not in stripped:
+                    restored.append(line)
+                    continue
+                if re.search(r"\bSpec\b|FuzzedInvariant|postcondition", stripped, re.I):
+                    restored.append(line)
+                    continue
+                if re.search(r"\bassert\w*\b", stripped) or "assertion removed" in stripped:
+                    restored.append(line)
+                    continue
+                if stripped.endswith(";") and (
+                    decl_assign_pattern.match(stripped)
+                    or assign_pattern.match(stripped)
+                ):
+                    restored.append(f"{indent}{stripped}")
+                else:
+                    restored.append(line)
+            return "\n".join(restored)
+
+        test = restore_commented_code_lines(test)
+        def strip_comments_and_strings(source: str) -> str:
+            out = []
+            i = 0
+            in_single = False
+            in_double = False
+            in_block = False
+            escape = False
+            while i < len(source):
+                ch = source[i]
+                if in_block:
+                    end = source.find("*/", i)
+                    if end == -1:
+                        return "".join(out)
+                    i = end + 2
+                    in_block = False
+                    continue
+                if in_single:
+                    if escape:
+                        escape = False
+                    elif ch == "\\":
+                        escape = True
+                    elif ch == "'":
+                        in_single = False
+                    i += 1
+                    continue
+                if in_double:
+                    if escape:
+                        escape = False
+                    elif ch == "\\":
+                        escape = True
+                    elif ch == '"':
+                        in_double = False
+                    i += 1
+                    continue
+                if source.startswith("/*", i):
+                    in_block = True
+                    i += 2
+                    continue
+                if source.startswith("//", i):
+                    end = source.find("\n", i)
+                    if end == -1:
+                        break
+                    i = end + 1
+                    out.append("\n")
+                    continue
+                if ch == "'":
+                    in_single = True
+                    i += 1
+                    continue
+                if ch == '"':
+                    in_double = True
+                    i += 1
+                    continue
+                out.append(ch)
+                i += 1
+            return "".join(out)
+
+        def collect_declared_identifiers(source: str) -> set[str]:
+            declared: set[str] = set()
+            cleaned = strip_comments_and_strings(source)
+            type_pattern = re.compile(
+                r"\b(?:final\s+)?(?:[A-Za-z_$][\w$]*\.)*[A-Za-z_$][\w$<>\\[\\]]*\s+"
+                r"([A-Za-z_$][\w$]*)\s*(?==|;|,|\)|\])"
+            )
+            for match in type_pattern.finditer(cleaned):
+                declared.add(match.group(1))
+            for match in re.finditer(
+                r"\bfor\s*\(\s*(?:final\s+)?(?:[A-Za-z_$][\w$]*\.)*[A-Za-z_$][\w$<>\\[\\]]*\s+"
+                r"([A-Za-z_$][\w$]*)\s*:",
+                cleaned,
+            ):
+                declared.add(match.group(1))
+            return declared
+
+        declared_identifiers = collect_declared_identifiers(test)
+
         counter = 0
 
         def next_temp_var() -> str:
@@ -473,12 +599,59 @@ class JavaTestFixer:
                 return True
             return False
 
+        def has_unknown_identifiers(expr: str) -> bool:
+            stripped = re.sub(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'', "", expr)
+            keyword_set = {
+                "true",
+                "false",
+                "null",
+                "this",
+                "super",
+                "new",
+                "instanceof",
+                "return",
+                "throw",
+                "catch",
+                "try",
+                "if",
+                "else",
+                "for",
+                "while",
+                "switch",
+                "case",
+                "default",
+            }
+            ident_pattern = re.compile(r"[A-Za-z_$][\w$]*")
+            for match in ident_pattern.finditer(stripped):
+                token = match.group(0)
+                if token in keyword_set:
+                    continue
+                if token in declared_identifiers:
+                    continue
+                if token[0].isupper():
+                    continue
+                start = match.start()
+                end = match.end()
+                prev = stripped[start - 1] if start > 0 else ""
+                if prev == ".":
+                    continue
+                nxt = stripped[end] if end < len(stripped) else ""
+                if nxt == ".":
+                    rest = stripped[end + 1 :]
+                    m2 = ident_pattern.search(rest)
+                    if m2 and m2.group(0) and m2.group(0)[0].isupper():
+                        continue
+                return True
+            return False
+
         def eval_expr(expr: str) -> str:
             expr = expr.strip()
             if not expr:
                 return "// assertion removed;"
             if expr.endswith(";"):
                 expr = expr[:-1].strip()
+            if has_unknown_identifiers(expr):
+                return f"// assertion removed: {expr};"
             if re.search(r"->|::", expr):
                 body = extract_lambda_body(expr)
                 if body:
@@ -498,7 +671,7 @@ class JavaTestFixer:
                     continue
                 if expr.endswith(";"):
                     expr = expr[:-1].strip()
-                if expr:
+                if expr and not has_unknown_identifiers(expr):
                     cleaned.append(expr)
             if not cleaned:
                 return "// assertion removed;"

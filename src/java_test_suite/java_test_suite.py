@@ -188,21 +188,22 @@ class JavaTestSuite:
                 line, in_block_comment
             )
             if test_start_pattern.search(sanitized):
-                if test_case_started and not entered_body:
+                if test_case_started:
+                    # If a new @Test appears while inside a body, the previous test
+                    # likely has unbalanced braces; drop it and start fresh.
                     extracted_test = []
                     brace_count = 0
                     entered_body = False
                     found_signature = False
                     lines_since_start = 0
                     lines_since_signature = 0
-                if not test_case_started:
-                    test_case_started = True
-                    brace_count = 0
-                    entered_body = False
-                    found_signature = False
-                    lines_since_start = 0
-                    lines_since_signature = 0
-                    extracted_test = []
+                test_case_started = True
+                brace_count = 0
+                entered_body = False
+                found_signature = False
+                lines_since_start = 0
+                lines_since_signature = 0
+                extracted_test = []
 
             if test_case_started:
                 extracted_test.append(line)
