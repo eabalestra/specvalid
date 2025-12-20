@@ -56,7 +56,8 @@ class JavaTestSuite:
         for test in self.test_list:
             fixed_test = self.remove_assertions_from_test(test)
             fixed_test = self.java_test_fixer.repair_java_test(fixed_test)
-            fixed_tests.append(fixed_test)
+            if fixed_test.strip():
+                fixed_tests.append(fixed_test)
         return self._rename_test_methods(fixed_tests, "llmTest")
 
     def write_test_suite(self, output_file: str):
@@ -169,19 +170,82 @@ class JavaTestSuite:
         test_methods = []
         extracted_test = []
         test_case_started = False
+        entered_body = False
+        in_block_comment = False
+        found_signature = False
+        lines_since_start = 0
+        lines_since_signature = 0
+        max_signature_lines = 8
+        max_body_lines = 8
         lines = content.split("\n")
-        test_start_pattern = re.compile(r"^\s*@Test")
+        test_start_pattern = re.compile(
+            r"@\s*(?:\w+\.)*(?:Test|ParameterizedTest|RepeatedTest|TestFactory|TestTemplate)\b"
+        )
+        signature_pattern = re.compile(r"\bvoid\s+\w+\s*\([^)]*\)")
 
         for line in lines:
-            if test_start_pattern.match(line):
-                test_case_started = True
+            sanitized, in_block_comment = JavaTestSuite._strip_comments_and_strings(
+                line, in_block_comment
+            )
+            if test_start_pattern.search(sanitized):
+                if test_case_started and not entered_body:
+                    extracted_test = []
+                    brace_count = 0
+                    entered_body = False
+                    found_signature = False
+                    lines_since_start = 0
+                    lines_since_signature = 0
+                if not test_case_started:
+                    test_case_started = True
+                    brace_count = 0
+                    entered_body = False
+                    found_signature = False
+                    lines_since_start = 0
+                    lines_since_signature = 0
+                    extracted_test = []
+
             if test_case_started:
                 extracted_test.append(line)
-                brace_count += line.count("{") - line.count("}")
-                if brace_count == 0 and line.strip().endswith("}"):
+                lines_since_start += 1
+                if not found_signature and signature_pattern.search(sanitized):
+                    found_signature = True
+                    lines_since_signature = 0
+                if found_signature:
+                    lines_since_signature += 1
+                    brace_count += sanitized.count("{") - sanitized.count("}")
+                    if brace_count > 0:
+                        entered_body = True
+
+                if not found_signature and lines_since_start > max_signature_lines:
+                    test_case_started = False
+                    extracted_test = []
+                    brace_count = 0
+                    entered_body = False
+                    found_signature = False
+                    lines_since_start = 0
+                    lines_since_signature = 0
+                    continue
+
+                if found_signature and not entered_body and lines_since_signature > max_body_lines:
+                    test_case_started = False
+                    extracted_test = []
+                    brace_count = 0
+                    entered_body = False
+                    found_signature = False
+                    lines_since_start = 0
+                    lines_since_signature = 0
+                    continue
+
+                if entered_body and brace_count == 0:
                     test_case_started = False
                     test_methods.append("\n".join(extracted_test))
                     extracted_test = []
+                    brace_count = 0
+                    entered_body = False
+                    found_signature = False
+                    lines_since_start = 0
+                    lines_since_signature = 0
+
         return test_methods
 
     @staticmethod

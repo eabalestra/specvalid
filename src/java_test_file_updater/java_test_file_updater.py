@@ -58,6 +58,14 @@ class JavaTestFileUpdater:
         return "\n".join(new_lines)
 
     @staticmethod
+    def disable_driver_exit_on_failure(content: str) -> str:
+        return re.sub(
+            r"(?m)^\s*System\.exit\(1\);\s*$",
+            "        // System.exit(1) disabled for Daikon runs",
+            content,
+        )
+
+    @staticmethod
     def prepare_test_file(
         file_path: str, suffix: str = "Augmented", is_driver: bool = False
     ) -> str:
@@ -75,6 +83,7 @@ class JavaTestFileUpdater:
             content = JavaTestFileUpdater.rename_constructor_usages(
                 content, class_name, suffix
             )
+            content = JavaTestFileUpdater.disable_driver_exit_on_failure(content)
 
         FileOperations.write_file(new_file_path, content)
         return new_file_path
