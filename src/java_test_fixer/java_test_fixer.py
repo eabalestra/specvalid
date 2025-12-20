@@ -184,4 +184,24 @@ class JavaTestFixer:
             compiled_pattern = re.compile(pattern, re.DOTALL)
             result = compiled_pattern.sub("// assertion removed;", result)
 
+        # Clean up any qualified prefixes left from prior replacements.
+        assertion_prefixes = (
+            r"(?:org\.junit\.Assert|org\.junit\.Assume|junit\.framework\.Assert|"
+            r"org\.junit\.jupiter\.api\.Assertions|org\.junit\.jupiter\.api\.Assumptions|"
+            r"org\.testng\.Assert|org\.testng\.AssertJUnit|"
+            r"org\.assertj\.core\.api\.Assertions|org\.assertj\.core\.api\.BDDAssertions|"
+            r"org\.hamcrest\.MatcherAssert|"
+            r"Assert|Assertions|Assume|Assumptions|MatcherAssert|BDDAssertions)"
+        )
+        result = re.sub(
+            rf"\b{assertion_prefixes}\.\s*(//\s*(?:assertion|fail)\s+removed[:;])",
+            r"\1",
+            result,
+        )
+        result = re.sub(
+            rf"\b{assertion_prefixes}\.\s*(?!(?:assert|assume|fail)\w*)",
+            "",
+            result,
+        )
+
         return result

@@ -1,3 +1,4 @@
+import re
 from typing import List
 
 from file_operations.file_ops import FileOperations
@@ -5,7 +6,6 @@ from java_test_fixer.java_test_fixer import JavaTestFixer
 
 
 class JavaTestSuite:
-
     def __init__(self, path_to_class: str, path_to_suite: str, subject_id: str):
         self.subject_id = subject_id
         self.path_to_class = path_to_class
@@ -71,8 +71,8 @@ class JavaTestSuite:
             output_dir: Base directory for output
             phase: Phase of processing ("raw", "fixed", "compiled")
         """
-        import os
         import json
+        import os
 
         for model_id, tests in self.tests_by_model.items():
             if not tests:
@@ -99,11 +99,38 @@ class JavaTestSuite:
                 json.dump(metadata, f, indent=2)
 
     def _rename_test_methods(self, test_methods: List[str], new_name: str) -> List[str]:
-        name_pattern = r"((?:public\s+)?void)\s+\w+\s*\([^)]*\)"
-        return [
-            re.sub(name_pattern, rf"\1 {new_name}{i}()", test_method)
-            for i, test_method in enumerate(test_methods)
-        ]
+        signature_pattern = re.compile(
+            r"^(\s*(?:(?:public|protected|private|static|final|synchronized|native|"
+            r"abstract|strictfp)\s+)*)void\s+(\w+)(\s*\()"
+        )
+        renamed_tests = []
+
+        for i, test_method in enumerate(test_methods):
+            lines = test_method.split("\n")
+            brace_depth = 0
+            seen_test_annotation = False
+            replaced = False
+
+            for idx, line in enumerate(lines):
+                if "@Test" in line:
+                    seen_test_annotation = True
+
+                if seen_test_annotation and not replaced and brace_depth == 0:
+                    new_line = signature_pattern.sub(
+                        lambda m: f"{m.group(1)}void {new_name}{i}{m.group(3)}",
+                        line,
+                        count=1,
+                    )
+                    if new_line != line:
+                        line = new_line
+                        replaced = True
+
+                lines[idx] = line
+                brace_depth += line.count("{") - line.count("}")
+
+            renamed_tests.append("\n".join(lines))
+
+        return renamed_tests
 
     @staticmethod
     def extract_tests_from_file(source_test_file: str) -> List[str]:
