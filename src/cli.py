@@ -86,8 +86,10 @@ def main():
         if args.no_invs_filtering:
             print("> Second validation skipped due to --no-invs-filtering flag")
         else:
+            print("> Running invariant filtering")
             core.run_invariant_filter()
-        core.run_bucketing_augmented()
+        # print("> Running bucketing augmented generation")
+        # core.run_bucketing_augmented()
         print("> Done ✅")
     elif args.command == "mutgen":
         raise NotImplementedError("Mutgen functionality is not implemented yet.")
