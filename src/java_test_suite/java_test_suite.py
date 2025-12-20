@@ -1,4 +1,3 @@
-import re
 from typing import List
 
 from file_operations.file_ops import FileOperations
@@ -50,27 +49,7 @@ class JavaTestSuite:
         return self._rename_test_methods(all_compiled, "llmTest")
 
     def remove_assertions_from_test(self, test_code: str) -> str:
-        lines = test_code.split("\n")
-        result_lines = []
-        for line in lines:
-            assertion_patterns = [
-                # JUnit assertions: assertTrue, assertFalse, assertEquals, etc.
-                r"^\s*(?:[a-zA-Z0-9_.]+\.)?assert\w*\s*\(",
-                # Java native assert statements with parentheses
-                r"^\s*assert\s*\(",
-                # Java native assert statements with space (no parentheses)
-                r"^\s*assert\s+",
-                # fail statements with parentheses
-                r"^\s*(?:[a-zA-Z0-9_.]+\.)?fail\w*\s*\(",
-                # fail statements with space
-                r"^\s*(?:[a-zA-Z0-9_.]+\.)?fail\s+",
-            ]
-            is_assertion = any(
-                re.match(pattern, line, re.IGNORECASE) for pattern in assertion_patterns
-            )
-            if not is_assertion:
-                result_lines.append(line)
-        return "\n".join(result_lines)
+        return JavaTestFixer.remove_assertions_from_test(test_code)
 
     def repair_java_tests(self) -> list[str]:
         fixed_tests = []

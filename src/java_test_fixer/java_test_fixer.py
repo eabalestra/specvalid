@@ -73,6 +73,36 @@ class JavaTestFixer:
         return True
 
     @staticmethod
+    def _has_top_level_comma(expression: str) -> bool:
+        depth = 0
+        in_single_quote = False
+        in_double_quote = False
+        escape = False
+
+        for ch in expression:
+            if escape:
+                escape = False
+                continue
+            if ch == "\\":
+                escape = True
+                continue
+            if ch == "'" and not in_double_quote:
+                in_single_quote = not in_single_quote
+                continue
+            if ch == '"' and not in_single_quote:
+                in_double_quote = not in_double_quote
+                continue
+            if in_single_quote or in_double_quote:
+                continue
+            if ch in "([{":
+                depth += 1
+            elif ch in ")]}":
+                depth = max(depth - 1, 0)
+            elif ch == "," and depth == 0:
+                return True
+        return False
+
+    @staticmethod
     def remove_assertions_from_test(test: str) -> str:
 
         def replacement_logic(match):
@@ -81,6 +111,15 @@ class JavaTestFixer:
                 expression = match.group(2)
             except IndexError:
                 expression = ""
+
+            if not expression:
+                return "// assertion removed;"
+
+            if expression and (re.search(r"->|::", expression) is not None):
+                return f"// assertion removed: {expression};"
+
+            if JavaTestFixer._has_top_level_comma(expression):
+                return f"// assertion removed: {expression};"
 
             # If expression contains method calls that should be executed,
             # keep it as executable statement
@@ -93,22 +132,30 @@ class JavaTestFixer:
         # Remove assertion wrappers for different types of assertions
         patterns_to_remove = [
             # JUnit assertions with message parameter (first argument is message)
-            r"\b(assertTrue|assertFalse)\s*\(\s*\"[^\"]*\"\s*,\s*(.*?)\s*\)\s*;",
-            r"\b(assertEquals|assertNotEquals)\s*\(\s*\"[^\"]*\"\s*,\s*[^,]+\s*,"
+            r"\b(?:[\w$]+\.)*(assertTrue|assertFalse)\s*\(\s*\"[^\"]*\"\s*,\s*(.*?)\s*\)\s*;",
+            r"\b(?:[\w$]+\.)*(assertEquals|assertNotEquals)\s*\(\s*\"[^\"]*\"\s*,\s*[^,]+\s*,"
+            r"\s*(.*?)\s*\)\s*;",
+            r"\b(?:[\w$]+\.)*(assertSame|assertNotSame|assertArrayEquals|"
+            r"assertIterableEquals|assertLinesMatch)\s*\(\s*\"[^\"]*\"\s*,\s*[^,]+\s*,"
+            r"\s*(.*?)\s*\)\s*;",
+            r"\b(?:[\w$]+\.)*(assertTimeout|assertTimeoutPreemptively)\s*\(\s*\"[^\"]*\"\s*,\s*[^,]+\s*,"
             r"\s*(.*?)\s*\)\s*;",
             # JUnit assertions with single argument (assertTrue, assertFalse)
-            r"\b(assertTrue|assertFalse)\s*\(\s*(.*?)\s*\)\s*;",
+            r"\b(?:[\w$]+\.)*(assertTrue|assertFalse)\s*\(\s*(.*?)\s*\)\s*;",
+            r"\b(?:[\w$]+\.)*(assertNull|assertNotNull|assertInstanceOf)\s*\(\s*(.*?)\s*\)\s*;",
             # JUnit assertions with two arguments (assertEquals, assertNotEquals, etc.)
-            r"\b(assertEquals|assertNotEquals|assertSame|assertNotSame|"
-            r"assertArrayEquals)\s*\(\s*[^,]+\s*,\s*(.*?)\s*\)\s*;",
+            r"\b(?:[\w$]+\.)*(assertEquals|assertNotEquals|assertSame|assertNotSame|"
+            r"assertArrayEquals|assertIterableEquals|assertLinesMatch)\s*\(\s*[^,]+\s*,\s*(.*?)\s*\)\s*;",
+            r"\b(?:[\w$]+\.)*(assertTimeout|assertTimeoutPreemptively)\s*\(\s*[^,]+\s*,\s*(.*?)\s*\)\s*;",
             # assertThat statements (Hamcrest/AssertJ style)
-            r"\b(assertThat)\s*\(\s*(.*?)\s*,\s*.*?\)\s*;",
-            r"\b(assertNull|assertNotNull)\s*\(\s*(.*?)\s*\)\s*;",
-            r"\b(assertThrows)\s*\(\s*[^,]+\s*,\s*(.*?)\s*\)\s*;",
-            r"\b(assertDoesNotThrow)\s*\(\s*(.*?)\s*\)\s*;",
-            r"\b(assertAll)\s*\(\s*(.*?)\s*\)\s*;",
-            r"\b(assumeTrue|assumeFalse)\s*\(\s*(.*?)\s*\)\s*;",
-            r"\b(assumeThat)\s*\(\s*(.*?)\s*,\s*.*?\)\s*;",
+            r"\b(?:[\w$]+\.)*(assertThat)\s*\(\s*(.*?)\s*,\s*.*?\)\s*;",
+            r"\b(?:[\w$]+\.)*(assertThrows|assertThrowsExactly)\s*\(\s*[^,]+\s*,\s*(.*?)\s*\)\s*;",
+            r"\b(?:[\w$]+\.)*(assertDoesNotThrow)\s*\(\s*(.*?)\s*\)\s*;",
+            r"\b(?:[\w$]+\.)*(assertAll)\s*\(\s*(.*?)\s*\)\s*;",
+            r"\b(?:[\w$]+\.)*(assumeTrue|assumeFalse|assumeNotNull|assumeNoException|assumingThat)\s*\(\s*(.*?)\s*\)\s*;",
+            r"\b(?:[\w$]+\.)*(assumeThat)\s*\(\s*(.*?)\s*,\s*.*?\)\s*;",
+            # Java native assert statements
+            r"\b(assert)\s+(.*?)(?:\s*:\s*.*?)?\s*;",
         ]
 
         result = test
@@ -118,12 +165,23 @@ class JavaTestFixer:
 
         # Handle fail statements separately (these should always be commented)
         fail_patterns = [
-            (r"\b(fail)\s*\(\s*\"[^\"]*\"\s*\)\s*;", r"// fail removed;"),
-            (r"\b(fail)\s*\(\s*\)\s*;", r"// fail removed;"),
+            (r"\b(?:[\w$]+\.)*(fail)\s*\(\s*\"[^\"]*\"\s*\)\s*;", r"// fail removed;"),
+            (r"\b(?:[\w$]+\.)*(fail)\s*\(\s*\"[^\"]*\"\s*,\s*.*?\)\s*;", r"// fail removed;"),
+            (r"\b(?:[\w$]+\.)*(fail)\s*\(\s*.*?\)\s*;", r"// fail removed;"),
+        ]
+
+        comment_only_patterns = [
+            r"\b(?:[\w$]+\.)*(assertThat|assertThatThrownBy|assertThatCode|"
+            r"assertThatExceptionOfType|assertThatIllegalArgumentException|"
+            r"assertThatIllegalStateException|assertThatNullPointerException)\b.*?;",
         ]
 
         for pattern, replacement in fail_patterns:
             compiled_pattern = re.compile(pattern, re.DOTALL)
             result = compiled_pattern.sub(replacement, result)
+
+        for pattern in comment_only_patterns:
+            compiled_pattern = re.compile(pattern, re.DOTALL)
+            result = compiled_pattern.sub("// assertion removed;", result)
 
         return result
