@@ -1,5 +1,5 @@
 import re
-from typing import List
+from typing import List, Tuple
 
 from file_operations.file_ops import FileOperations
 from java_test_fixer.java_test_fixer import JavaTestFixer
@@ -103,6 +103,10 @@ class JavaTestSuite:
             r"^(\s*(?:(?:public|protected|private|static|final|synchronized|native|"
             r"abstract|strictfp)\s+)*)void\s+(\w+)(\s*\()"
         )
+        inline_signature_pattern = re.compile(r"(\bvoid)\s+(\w+)(\s*\()")
+        annotation_pattern = re.compile(
+            r"@\s*(?:\w+\.)*(?:Test|ParameterizedTest|RepeatedTest|TestFactory|TestTemplate)\b"
+        )
         renamed_tests = []
 
         for i, test_method in enumerate(test_methods):
@@ -110,23 +114,37 @@ class JavaTestSuite:
             brace_depth = 0
             seen_test_annotation = False
             replaced = False
+            in_block_comment = False
 
             for idx, line in enumerate(lines):
-                if "@Test" in line:
+                sanitized, in_block_comment = self._strip_comments_and_strings(
+                    line, in_block_comment
+                )
+                if annotation_pattern.search(sanitized):
                     seen_test_annotation = True
 
-                if seen_test_annotation and not replaced and brace_depth == 0:
+                if (
+                    not replaced
+                    and brace_depth == 0
+                    and (seen_test_annotation or idx == 0)
+                ):
                     new_line = signature_pattern.sub(
                         lambda m: f"{m.group(1)}void {new_name}{i}{m.group(3)}",
                         line,
                         count=1,
                     )
+                    if new_line == line:
+                        new_line = inline_signature_pattern.sub(
+                            lambda m: f"{m.group(1)} {new_name}{i}{m.group(3)}",
+                            line,
+                            count=1,
+                        )
                     if new_line != line:
                         line = new_line
                         replaced = True
 
                 lines[idx] = line
-                brace_depth += line.count("{") - line.count("}")
+                brace_depth += sanitized.count("{") - sanitized.count("}")
 
             renamed_tests.append("\n".join(lines))
 
@@ -165,3 +183,63 @@ class JavaTestSuite:
                     test_methods.append("\n".join(extracted_test))
                     extracted_test = []
         return test_methods
+
+    @staticmethod
+    def _strip_comments_and_strings(
+        line: str, in_block_comment: bool
+    ) -> Tuple[str, bool]:
+        out = []
+        i = 0
+        in_single_quote = False
+        in_double_quote = False
+        escape = False
+
+        while i < len(line):
+            ch = line[i]
+            if in_block_comment:
+                end = line.find("*/", i)
+                if end == -1:
+                    return "", True
+                i = end + 2
+                in_block_comment = False
+                continue
+
+            if in_single_quote:
+                if escape:
+                    escape = False
+                elif ch == "\\":
+                    escape = True
+                elif ch == "'":
+                    in_single_quote = False
+                i += 1
+                continue
+
+            if in_double_quote:
+                if escape:
+                    escape = False
+                elif ch == "\\":
+                    escape = True
+                elif ch == '"':
+                    in_double_quote = False
+                i += 1
+                continue
+
+            if line.startswith("/*", i):
+                in_block_comment = True
+                i += 2
+                continue
+            if line.startswith("//", i):
+                break
+            if ch == "'":
+                in_single_quote = True
+                i += 1
+                continue
+            if ch == '"':
+                in_double_quote = True
+                i += 1
+                continue
+
+            out.append(ch)
+            i += 1
+
+        return "".join(out), in_block_comment
