@@ -1,0 +1,341 @@
+#!/usr/bin/env python3
+import argparse
+import csv
+import os
+import re
+import sys
+from collections import defaultdict
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+SRC_ROOT = REPO_ROOT / "src"
+sys.path.append(str(SRC_ROOT))
+
+from specs.specs import Specs  # noqa: E402
+
+VERDICT_PATTERNS = [
+    re.compile(r"\[\[VERDICT\]\]\s*(OK|FAILED)", re.IGNORECASE | re.DOTALL),
+    re.compile(r"VERDICT\s*:\s*(OK|FAILED)", re.IGNORECASE),
+    re.compile(r"verdict is \"?(OK|FAILED)\"?", re.IGNORECASE),
+]
+
+
+def normalize_spec(spec: str) -> str:
+    return " ".join(spec.strip().split())
+
+
+def parse_verdict(response_text: str) -> str | None:
+    for pattern in VERDICT_PATTERNS:
+        match = pattern.search(response_text)
+        if match:
+            return match.group(1).upper()
+    return None
+
+
+def read_subjects(subjects_file: Path) -> list[tuple[str, str, str]]:
+    subjects = []
+    with subjects_file.open("r") as handle:
+        for line in handle:
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            parts = stripped.split()
+            if len(parts) < 3:
+                print(f"Skipping malformed line in {subjects_file}: {line.rstrip()}")
+                continue
+            subjects.append((parts[0], parts[1], parts[2]))
+    return subjects
+
+
+def class_src_path(gassert_dir: Path, subject: str, class_fq: str) -> Path:
+    package_path = class_fq.replace(".", "/")
+    return (
+        gassert_dir
+        / "subjects"
+        / subject
+        / "src"
+        / "main"
+        / "java"
+        / f"{package_path}.java"
+    )
+
+
+def load_filtered_specs(specs_dir: Path, class_path_src: Path, method: str) -> set[str]:
+    filtered_candidates = list(specs_dir.glob("*-specvalid-filtered.assertions"))
+    if not filtered_candidates:
+        filtered_candidates = list(specs_dir.glob("*-specfuzzer-filtered.assertions"))
+    if not filtered_candidates:
+        raise FileNotFoundError(f"No filtered assertions file found in {specs_dir}")
+    filtered_path = filtered_candidates[0]
+    spec_transformer = Specs(str(filtered_path), str(class_path_src), method)
+    filtered = set()
+    with filtered_path.open("r") as handle:
+        for line in handle:
+            raw = line.strip()
+            if not raw:
+                continue
+            if not spec_transformer._is_inv_line(raw):
+                continue
+            transformed = spec_transformer.transform_specification_vars(raw)
+            filtered.add(normalize_spec(transformed))
+    return filtered
+
+
+def parse_testgen_log(log_path: Path) -> list[dict]:
+    rows = []
+    lines = log_path.read_text().splitlines()
+    i = 0
+    current_assertion = None
+    assertion_re = re.compile(r"Generating test for assertion:\s*(.*)$")
+    response_re = re.compile(
+        r"LLM response for prompt ([^ ]+) and model ([^:]+):\s*(.*)$"
+    )
+
+    while i < len(lines):
+        line = lines[i]
+        assertion_match = assertion_re.search(line)
+        if assertion_match:
+            current_assertion = normalize_spec(assertion_match.group(1))
+            i += 1
+            continue
+
+        response_match = response_re.search(line)
+        if response_match and current_assertion:
+            prompt_id = response_match.group(1)
+            model_id = response_match.group(2).strip()
+            response_lines = [response_match.group(3)]
+            i += 1
+            while i < len(lines) and not lines[i].startswith("INFO:logger_"):
+                response_lines.append(lines[i])
+                i += 1
+            response_text = "\n".join(response_lines).strip()
+            verdict = parse_verdict(response_text)
+            rows.append(
+                {
+                    "assertion": current_assertion,
+                    "model_id": model_id,
+                    "prompt_id": prompt_id,
+                    "verdict": verdict or "UNKNOWN",
+                }
+            )
+            continue
+
+        i += 1
+
+    return rows
+
+
+def classify(verdict: str, is_filtered: bool) -> str:
+    if verdict == "FAILED" and is_filtered:
+        return "TP"
+    if verdict == "FAILED" and not is_filtered:
+        return "FP"
+    if verdict == "OK" and not is_filtered:
+        return "TN"
+    if verdict == "OK" and is_filtered:
+        return "FN"
+    return "UNKNOWN"
+
+
+def main() -> int:
+    default_gassert_dir = Path(
+        os.environ.get("GASSERT_DIR", REPO_ROOT / "experiments" / "GAssert")
+    )
+
+    parser = argparse.ArgumentParser(
+        description="Compute TP/FP/TN/FN per assertion using testgen logs and filtered specs."
+    )
+    parser.add_argument(
+        "--subjects-file",
+        default=str(REPO_ROOT / "experiments" / "subjects"),
+        help="Subjects file (default: experiments/subjects)",
+    )
+    parser.add_argument(
+        "--output-dir",
+        default=str(REPO_ROOT / "output"),
+        help="Specvalid output directory (default: output)",
+    )
+    parser.add_argument(
+        "--gassert-dir",
+        default=str(default_gassert_dir),
+        help="GAssert base directory (default: $GASSERT_DIR or experiments/GAssert)",
+    )
+    parser.add_argument(
+        "--models",
+        default="",
+        help="Comma-separated model filter (default: all)",
+    )
+    parser.add_argument(
+        "--subject",
+        default="",
+        help="Single subject id to process (e.g., RingBuffer_remove)",
+    )
+    parser.add_argument(
+        "--output",
+        default=str(REPO_ROOT / "experiments" / "rq2_verdicts.csv"),
+        help="Output CSV for per-assertion rows",
+    )
+    parser.add_argument(
+        "--summary-output",
+        default=str(REPO_ROOT / "experiments" / "rq2_verdicts_summary.csv"),
+        help="Output CSV for per-model summary",
+    )
+    args = parser.parse_args()
+
+    subjects_file = Path(args.subjects_file)
+    output_dir = Path(args.output_dir)
+    gassert_dir = Path(args.gassert_dir)
+    model_filter = {m.strip() for m in args.models.split(",") if m.strip()}
+
+    subjects = read_subjects(subjects_file)
+    if args.subject:
+        subjects = [
+            s for s in subjects if f"{s[1].split('.')[-1]}_{s[2]}" == args.subject
+        ]
+        if not subjects:
+            print(f"No subject matched: {args.subject}")
+            return 1
+
+    per_assertion_rows = []
+    summary_counts = defaultdict(
+        lambda: {"TP": 0, "FP": 0, "TN": 0, "FN": 0, "UNKNOWN": 0}
+    )
+
+    for subject_name, class_fq, method in subjects:
+        class_name = class_fq.split(".")[-1]
+        subject_id = f"{class_name}_{method}"
+        subject_output_dir = output_dir / subject_id
+        testgen_log = subject_output_dir / "logs" / "testgen.log"
+        if not testgen_log.exists():
+            print(f"Missing testgen log: {testgen_log}")
+            continue
+
+        log_rows = parse_testgen_log(testgen_log)
+        if not log_rows:
+            print(f"No verdicts parsed in {testgen_log}")
+            continue
+
+        class_src = class_src_path(gassert_dir, subject_name, class_fq)
+        if not class_src.exists():
+            print(f"Missing class source: {class_src}")
+            continue
+
+        models_dir = subject_output_dir / "test" / "by_model"
+        if not models_dir.exists():
+            print(f"Missing models dir: {models_dir}")
+            continue
+
+        filtered_specs_by_model = {}
+        for model_dir in models_dir.iterdir():
+            if not model_dir.is_dir():
+                continue
+            model_id = model_dir.name
+            if model_filter and model_id not in model_filter:
+                continue
+            specs_dir = model_dir / "specs"
+            if not specs_dir.exists():
+                continue
+            try:
+                filtered_specs_by_model[model_id] = load_filtered_specs(
+                    specs_dir, class_src, method
+                )
+            except FileNotFoundError as exc:
+                print(exc)
+                continue
+
+        if not filtered_specs_by_model:
+            print(f"No filtered specs found for {subject_id}")
+            continue
+
+        for row in log_rows:
+            model_id = row["model_id"]
+            if model_filter and model_id not in model_filter:
+                continue
+            if model_id not in filtered_specs_by_model:
+                continue
+            assertion = row["assertion"]
+            verdict = row["verdict"]
+            filtered_set = filtered_specs_by_model[model_id]
+            is_filtered = assertion in filtered_set
+            label = classify(verdict, is_filtered)
+
+            per_assertion_rows.append(
+                {
+                    "subject": subject_id,
+                    "model_id": model_id,
+                    "prompt_id": row["prompt_id"],
+                    "assertion": assertion,
+                    "verdict": verdict,
+                    "filtered": str(is_filtered),
+                    "label": label,
+                }
+            )
+
+            summary_key = (subject_id, model_id, row["prompt_id"])
+            summary_counts[summary_key][label] += 1
+
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", newline="") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=[
+                "subject",
+                "model_id",
+                "prompt_id",
+                "assertion",
+                "verdict",
+                "filtered",
+                "label",
+            ],
+        )
+        writer.writeheader()
+        writer.writerows(per_assertion_rows)
+
+    summary_path = Path(args.summary_output)
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+    with summary_path.open("w", newline="") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=[
+                "subject",
+                "model_id",
+                "prompt_id",
+                "TP",
+                "FP",
+                "TN",
+                "FN",
+                "UNKNOWN",
+                "precision",
+                "recall",
+            ],
+        )
+        writer.writeheader()
+        for (subject_id, model_id, prompt_id), counts in sorted(summary_counts.items()):
+            tp = counts["TP"]
+            fp = counts["FP"]
+            fn = counts["FN"]
+            precision = tp / (tp + fp) if (tp + fp) > 0 else ""
+            recall = tp / (tp + fn) if (tp + fn) > 0 else ""
+            writer.writerow(
+                {
+                    "subject": subject_id,
+                    "model_id": model_id,
+                    "prompt_id": prompt_id,
+                    "TP": counts["TP"],
+                    "FP": counts["FP"],
+                    "TN": counts["TN"],
+                    "FN": counts["FN"],
+                    "UNKNOWN": counts["UNKNOWN"],
+                    "precision": precision,
+                    "recall": recall,
+                }
+            )
+
+    print(f"Wrote per-assertion rows to {output_path}")
+    print(f"Wrote summary rows to {summary_path}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
