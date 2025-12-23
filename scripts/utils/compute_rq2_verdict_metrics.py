@@ -14,22 +14,62 @@ sys.path.append(str(SRC_ROOT))
 
 from specs.specs import Specs  # noqa: E402
 
+VERDICT_TOKEN_MAP = {
+    "OK": "OK",
+    "FAILED": "FAILED",
+    "VALID": "OK",
+    "INVALID": "FAILED",
+}
+
 VERDICT_PATTERNS = [
-    re.compile(r"\[\[VERDICT\]\]\s*(OK|FAILED)", re.IGNORECASE | re.DOTALL),
-    re.compile(r"VERDICT\s*:\s*(OK|FAILED)", re.IGNORECASE),
-    re.compile(r"verdict is \"?(OK|FAILED)\"?", re.IGNORECASE),
+    re.compile(
+        r"\[\[VERDICT\]\]\s*(OK|FAILED|VALID|INVALID)",
+        re.IGNORECASE | re.DOTALL,
+    ),
+    re.compile(
+        r"\bVERDICT\b\s*[:=\-]\s*(OK|FAILED|VALID|INVALID)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bverdict\b\s+is\s+\"?(OK|FAILED|VALID|INVALID)\"?",
+        re.IGNORECASE,
+    ),
 ]
+
+TEST_NONE_RE = re.compile(r"\[\[TEST\]\]\s*NONE", re.IGNORECASE)
+TEST_MARKER_RE = re.compile(r"\[\[TEST\]\]", re.IGNORECASE)
+JUNIT_TEST_RE = re.compile(r"^\s*@Test\b", re.MULTILINE)
 
 
 def normalize_spec(spec: str) -> str:
     return " ".join(spec.strip().split())
 
 
+def _normalize_verdict(token: str) -> str | None:
+    return VERDICT_TOKEN_MAP.get(token.upper())
+
+
 def parse_verdict(response_text: str) -> str | None:
     for pattern in VERDICT_PATTERNS:
         match = pattern.search(response_text)
         if match:
-            return match.group(1).upper()
+            return _normalize_verdict(match.group(1))
+
+    if TEST_NONE_RE.search(response_text):
+        return "OK"
+    if TEST_MARKER_RE.search(response_text):
+        return "FAILED"
+    if JUNIT_TEST_RE.search(response_text):
+        return "FAILED"
+
+    for line in response_text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        normalized = _normalize_verdict(stripped)
+        if normalized:
+            return normalized
+
     return None
 
 
@@ -75,9 +115,7 @@ def class_src_path(gassert_dir: Path, subject: str, class_fq: str) -> Path:
 
 
 def load_filtered_specs(specs_dir: Path, class_path_src: Path, method: str) -> set[str]:
-    filtered_candidates = list(specs_dir.glob("*-specvalid-filtered.assertions"))
-    if not filtered_candidates:
-        filtered_candidates = list(specs_dir.glob("*-specfuzzer-filtered.assertions"))
+    filtered_candidates = list(specs_dir.glob("*-specfuzzer-filtered.assertions"))
     if not filtered_candidates:
         raise FileNotFoundError(f"No filtered assertions file found in {specs_dir}")
     filtered_path = filtered_candidates[0]
