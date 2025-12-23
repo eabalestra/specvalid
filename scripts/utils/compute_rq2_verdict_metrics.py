@@ -7,7 +7,7 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-# TODO: if you move this script, update the path accordingly
+# TODO: in my project this script is in scripts/utils/compute_rq2_verdict_metrics.py
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SRC_ROOT = REPO_ROOT / "src"
 sys.path.append(str(SRC_ROOT))
