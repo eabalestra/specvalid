@@ -133,6 +133,67 @@ def load_filtered_specs(specs_dir: Path, class_path_src: Path, method: str) -> s
     return filtered
 
 
+def parse_buckets_assertions_path(log_path: Path) -> Path | None:
+    patterns = [
+        re.compile(r"buckets_assertions_file='([^']+)'"),
+        re.compile(r'buckets_assertions_file="([^"]+)"'),
+        re.compile(r"buckets_assertions_file=([^,\s)]+)"),
+    ]
+    for line in log_path.read_text().splitlines():
+        for pattern in patterns:
+            match = pattern.search(line)
+            if match:
+                return Path(match.group(1))
+    return None
+
+
+def resolve_buckets_path(
+    buckets_path: Path | None,
+    subject_name: str,
+    class_name: str,
+    method: str,
+) -> Path | None:
+    candidates: list[Path] = []
+    if buckets_path:
+        if buckets_path.exists():
+            return buckets_path
+        marker = "experiments/specfuzzer-subject-results"
+        buckets_str = str(buckets_path)
+        if marker in buckets_str:
+            suffix = buckets_str.split(marker, 1)[1].lstrip("/\\")
+            candidates.append(REPO_ROOT / marker / suffix)
+
+    candidates.append(
+        REPO_ROOT
+        / "experiments"
+        / "specfuzzer-subject-results"
+        / subject_name
+        / "output"
+        / f"{class_name}-{method}-specfuzzer-1-buckets.assertions"
+    )
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def build_raw_spec_map(
+    buckets_path: Path, class_path_src: Path, method: str
+) -> dict[str, list[str]]:
+    spec_transformer = Specs(str(buckets_path), str(class_path_src), method)
+    raw_specs = spec_transformer.parse_and_collect_specs()
+    mapping: dict[str, list[str]] = defaultdict(list)
+    for raw in sorted(raw_specs):
+        transformed = normalize_spec(spec_transformer.transform_specification_vars(raw))
+        mapping[transformed].append(raw.strip())
+
+    for key, values in mapping.items():
+        mapping[key] = sorted(set(values))
+
+    return mapping
+
+
 def parse_testgen_log(log_path: Path) -> list[dict]:
     rows = []
     lines = log_path.read_text().splitlines()
@@ -307,6 +368,16 @@ def main() -> int:
             print(f"No filtered specs found for {subject_id}")
             continue
 
+        raw_spec_map: dict[str, list[str]] = {}
+        buckets_path = parse_buckets_assertions_path(testgen_log)
+        resolved_buckets_path = resolve_buckets_path(
+            buckets_path, subject_name, class_name, method
+        )
+        if resolved_buckets_path and resolved_buckets_path.exists():
+            raw_spec_map = build_raw_spec_map(resolved_buckets_path, class_src, method)
+        else:
+            print(f"Missing buckets assertions for {subject_id} (raw specs not found)")
+
         for row in log_rows:
             model_id = row["model_id"]
             if model_filter and model_id not in model_filter:
@@ -321,6 +392,8 @@ def main() -> int:
             filtered_set = filtered_specs_by_model[model_id]
             is_filtered = assertion in filtered_set
             label = classify(verdict, is_filtered)
+            raw_specs = raw_spec_map.get(assertion, [])
+            raw_spec_value = " || ".join(raw_specs) if raw_specs else ""
 
             per_assertion_rows.append(
                 {
@@ -328,6 +401,7 @@ def main() -> int:
                     "model_id": model_id,
                     "prompt_id": prompt_id,
                     "assertion": assertion,
+                    "raw_spec": raw_spec_value,
                     "verdict": verdict,
                     "filtered": str(is_filtered),
                     "label": label,
@@ -347,6 +421,7 @@ def main() -> int:
                 "model_id",
                 "prompt_id",
                 "assertion",
+                "raw_spec",
                 "verdict",
                 "filtered",
                 "label",
