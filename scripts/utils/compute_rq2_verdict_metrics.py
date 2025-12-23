@@ -7,6 +7,7 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
+# TODO: if you move this script, update the path accordingly
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SRC_ROOT = REPO_ROOT / "src"
 sys.path.append(str(SRC_ROOT))
@@ -45,6 +46,19 @@ def read_subjects(subjects_file: Path) -> list[tuple[str, str, str]]:
                 continue
             subjects.append((parts[0], parts[1], parts[2]))
     return subjects
+
+
+def normalize_prompt_id(prompt_id: str) -> str:
+    cleaned = prompt_id.strip()
+    if cleaned.lower() in {"1", "v1", "general_v1"}:
+        return "PromptID.General_V1"
+    if cleaned.lower() in {"2", "v2", "general_v2"}:
+        return "PromptID.General_V2"
+    if cleaned.lower() in {"3", "v3", "general_v3"}:
+        return "PromptID.General_V3"
+    if not cleaned.startswith("PromptID."):
+        return f"PromptID.{cleaned}"
+    return cleaned
 
 
 def class_src_path(gassert_dir: Path, subject: str, class_fq: str) -> Path:
@@ -147,7 +161,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--subjects-file",
-        default=str(REPO_ROOT / "experiments" / "subjects"),
+        default=str(REPO_ROOT / "experiments" / "subjects-to-run"),
         help="Subjects file (default: experiments/subjects)",
     )
     parser.add_argument(
@@ -164,6 +178,11 @@ def main() -> int:
         "--models",
         default="",
         help="Comma-separated model filter (default: all)",
+    )
+    parser.add_argument(
+        "--prompts",
+        default="",
+        help="Comma-separated prompt filter (default: all)",
     )
     parser.add_argument(
         "--subject",
@@ -186,6 +205,9 @@ def main() -> int:
     output_dir = Path(args.output_dir)
     gassert_dir = Path(args.gassert_dir)
     model_filter = {m.strip() for m in args.models.split(",") if m.strip()}
+    prompt_filter = {
+        normalize_prompt_id(p) for p in args.prompts.split(",") if p.strip()
+    }
 
     subjects = read_subjects(subjects_file)
     if args.subject:
@@ -251,6 +273,9 @@ def main() -> int:
             model_id = row["model_id"]
             if model_filter and model_id not in model_filter:
                 continue
+            prompt_id = row["prompt_id"]
+            if prompt_filter and prompt_id not in prompt_filter:
+                continue
             if model_id not in filtered_specs_by_model:
                 continue
             assertion = row["assertion"]
@@ -263,7 +288,7 @@ def main() -> int:
                 {
                     "subject": subject_id,
                     "model_id": model_id,
-                    "prompt_id": row["prompt_id"],
+                    "prompt_id": prompt_id,
                     "assertion": assertion,
                     "verdict": verdict,
                     "filtered": str(is_filtered),
@@ -271,7 +296,7 @@ def main() -> int:
                 }
             )
 
-            summary_key = (subject_id, model_id, row["prompt_id"])
+            summary_key = (subject_id, model_id, prompt_id)
             summary_counts[summary_key][label] += 1
 
     output_path = Path(args.output)
@@ -311,6 +336,7 @@ def main() -> int:
             ],
         )
         writer.writeheader()
+        # print(summary_counts.items())
         for (subject_id, model_id, prompt_id), counts in sorted(summary_counts.items()):
             tp = counts["TP"]
             fp = counts["FP"]
@@ -332,6 +358,7 @@ def main() -> int:
                 }
             )
 
+    print("=" * 12)
     print(f"Wrote per-assertion rows to {output_path}")
     print(f"Wrote summary rows to {summary_path}")
     return 0
