@@ -24,7 +24,6 @@ experiments/major/
 experiments/GAssert_binaries.zip
 experiments/run-verify-example.sh
 
-
 # Egg-info directory
 src/specvalid.egg-info
 
@@ -33,3 +32,6 @@ TODO.md
 
 # Environment variables file
 .env
+
+# Local development files
+./dev
