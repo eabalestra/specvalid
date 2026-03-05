@@ -34,4 +34,5 @@ TODO.md
 .env
 
 # Local development files
-./dev
+.dev/
+.dev
