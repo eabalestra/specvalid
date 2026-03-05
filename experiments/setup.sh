@@ -9,7 +9,7 @@ setup_venv() {
     if [ -d ".venv" ]; then
         echo "Virtual environment already exists, activating..."
     else
-        echo "Creating new virtual environment with uv..."
+        echo "Creating new virtual environment..."
         uv venv .venv
     fi
 

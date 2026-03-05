@@ -1,13 +1,23 @@
 [project]
-name = "specvalid"
-version = "0.1.0"
+dependencies = [
+  "google-genai==1.27.0",
+  "huggingface-hub==0.34.1",
+  "ollama==0.5.1",
+  "openai==1.97.1",
+  "pydantic==2.11.7",
+  "requests==2.32.4",
+]
 description = "Add your description here"
+name = "specvalid"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = [
-    "google-genai==1.27.0",
-    "huggingface-hub==0.34.1",
-    "openai==1.97.1",
-    "pydantic==2.11.7",
-    "requests==2.32.4",
-]
+version = "0.1.0"
+
+[project.scripts]
+specvalid = "cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
