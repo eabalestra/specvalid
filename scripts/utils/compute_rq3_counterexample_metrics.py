@@ -39,6 +39,14 @@ VERDICT_PATTERNS = [
 TEST_NONE_RE = re.compile(r"\[\[TEST\]\]\s*NONE", re.IGNORECASE)
 TEST_MARKER_RE = re.compile(r"\[\[TEST\]\]", re.IGNORECASE)
 JUNIT_TEST_RE = re.compile(r"^\s*@Test\b", re.MULTILINE)
+JSON_KV_VERDICT_RE = re.compile(
+    r'"[^"]+"\s*:\s*"?\b(OK|FAILED|VALID|INVALID)\b"?',
+    re.IGNORECASE,
+)
+JSON_VALUE_VERDICT_RE = re.compile(
+    r':\s*"?\b(OK|FAILED|VALID|INVALID)\b"?',
+    re.IGNORECASE,
+)
 
 
 def normalize_spec(spec: str) -> str:
@@ -61,6 +69,14 @@ def parse_verdict(response_text: str) -> str | None:
         return "FAILED"
     if JUNIT_TEST_RE.search(response_text):
         return "FAILED"
+
+    json_match = JSON_KV_VERDICT_RE.search(response_text)
+    if json_match:
+        return _normalize_verdict(json_match.group(1))
+    if "{" in response_text or "}" in response_text:
+        json_match = JSON_VALUE_VERDICT_RE.search(response_text)
+        if json_match:
+            return _normalize_verdict(json_match.group(1))
 
     for line in response_text.splitlines():
         stripped = line.strip()

@@ -38,6 +38,14 @@ VERDICT_PATTERNS = [
 TEST_NONE_RE = re.compile(r"\[\[TEST\]\]\s*NONE", re.IGNORECASE)
 TEST_MARKER_RE = re.compile(r"\[\[TEST\]\]", re.IGNORECASE)
 JUNIT_TEST_RE = re.compile(r"^\s*@Test\b", re.MULTILINE)
+JSON_KV_VERDICT_RE = re.compile(
+    r'"[^"]+"\s*:\s*"?\b(OK|FAILED|VALID|INVALID)\b"?',
+    re.IGNORECASE,
+)
+JSON_VALUE_VERDICT_RE = re.compile(
+    r':\s*"?\b(OK|FAILED|VALID|INVALID)\b"?',
+    re.IGNORECASE,
+)
 
 
 def normalize_spec(spec: str) -> str:
@@ -60,6 +68,14 @@ def parse_verdict(response_text: str) -> str | None:
         return "FAILED"
     if JUNIT_TEST_RE.search(response_text):
         return "FAILED"
+
+    json_match = JSON_KV_VERDICT_RE.search(response_text)
+    if json_match:
+        return _normalize_verdict(json_match.group(1))
+    if "{" in response_text or "}" in response_text:
+        json_match = JSON_VALUE_VERDICT_RE.search(response_text)
+        if json_match:
+            return _normalize_verdict(json_match.group(1))
 
     for line in response_text.splitlines():
         stripped = line.strip()
@@ -239,19 +255,33 @@ def build_raw_spec_map(
     return mapping
 
 
+def split_invariants_line(raw_line: str) -> list[str]:
+    if raw_line.count("FuzzedInvariant") <= 1:
+        return [raw_line]
+    parts = []
+    for chunk in re.split(r"(?=FuzzedInvariant)", raw_line):
+        cleaned = chunk.strip(" ,")
+        if cleaned:
+            parts.append(cleaned)
+    return parts
+
+
 def parse_ground_truth_file(
     gt_path: Path, class_path_src: Path, method: str
 ) -> set[str]:
     spec_transformer = Specs(str(gt_path), str(class_path_src), method)
     result = set()
     for line in gt_path.read_text().splitlines():
-        raw = line.strip()
-        if not raw:
+        raw_line = line.strip()
+        if not raw_line:
             continue
-        if not spec_transformer._is_inv_line(raw):
-            continue
-        transformed = normalize_spec(spec_transformer.transform_specification_vars(raw))
-        result.add(transformed)
+        for raw in split_invariants_line(raw_line):
+            if not spec_transformer._is_inv_line(raw):
+                continue
+            transformed = normalize_spec(
+                spec_transformer.transform_specification_vars(raw)
+            )
+            result.add(transformed)
     return result
 
 

@@ -43,7 +43,7 @@ def count_tests_in_driver(driver_path):
 
 
 def main():
-    repo_root = Path(__file__).resolve().parent.parent
+    repo_root = Path(__file__).resolve().parent.parent.parent
     default_gassert_dir = os.environ.get(
         "GASSERT_DIR", str(repo_root / "experiments" / "GAssert")
     )
