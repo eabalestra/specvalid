@@ -1,7 +1,10 @@
+import glob
 import json
 import os
 import shutil
 import subprocess
+import time
+from pathlib import Path
 
 from daikon.daikon import Daikon
 from file_operations.file_ops import FileOperations
@@ -16,6 +19,10 @@ from logger.logger import Logger
 from prompt.prompt_template import PromptID
 from services.java_llmtesgen_service import JavaLLMTestGenService
 from services.verification_only_service import VerificationOnlyService
+from specfuzzer.gen_mutated_traces import (
+    MutatedTraceGenerationError,
+    MutatedTraceGenerator,
+)
 from subject.subject import Subject
 from testgen.java_test_generator import JavaTestGenerator
 from testgen.model_test_processor import ModelTestProcessor
@@ -80,6 +87,26 @@ def _init_subdirectory(
         shutil.rmtree(subdir)
     os.makedirs(subdir, exist_ok=True)
     return subdir
+
+
+def _expand_classpath(cp_str: str) -> str:
+    """Expand classpath with globs to absolute paths."""
+    parts = cp_str.split(os.pathsep)
+    expanded = []
+    for part in parts:
+        if not part:
+            continue
+        if "*" in part:
+            # Expand glob patterns and convert to absolute paths
+            matched = glob.glob(part)
+            expanded.extend([str(Path(p).resolve()) for p in matched])
+        elif Path(part).exists():
+            # Convert to absolute path
+            expanded.append(str(Path(part).resolve()))
+        else:
+            # Keep as-is if path doesn't exist (might be needed)
+            expanded.append(part)
+    return os.pathsep.join(expanded)
 
 
 class Core:
@@ -229,6 +256,15 @@ class Core:
 
         models_dir = f"{self.output_dir}/test/by_model"
 
+        if not os.path.isdir(models_dir):
+            msg = (
+                "❌ No per-model tests were found. "
+                "Run test generation before invariant filtering."
+            )
+            logger.log_error(msg)
+            print(msg)
+            return
+
         available_models = []
         for model_name in os.listdir(models_dir):
             model_dir = os.path.join(models_dir, model_name)
@@ -240,6 +276,28 @@ class Core:
             f"Found {len(available_models)} models with compiled tests: "
             f"{available_models}"
         )
+
+        # Log the number of specs in the SpecFuzzer buckets file (baseline)
+        try:
+            with open(self.args.buckets_assertions_file, "r") as f:
+                specfuzzer_buckets_lines = [
+                    line.strip()
+                    for line in f
+                    if line.strip()
+                    and not line.startswith("=")
+                    and not line.startswith("buckets=")
+                    and not line.startswith("specs=")
+                    and ":::OBJECT" not in line
+                    and ":::POSTCONDITION" not in line
+                    and ":::ENTER" not in line
+                    and ":::EXIT" not in line
+                ]
+                specfuzzer_buckets_count = len(specfuzzer_buckets_lines)
+                logger.log(
+                    f"Specs in SpecFuzzer buckets file: {specfuzzer_buckets_count}"
+                )
+        except Exception as e:
+            logger.log_warning(f"Could not count SpecFuzzer buckets specs: {e}")
 
         for model in available_models:
             print(f"> Running invariant filtering for tests from model: {model}")
@@ -364,6 +422,7 @@ class Core:
             logger.log(
                 f"Run Daikon Invariant Checker from driver: {augmented_test_driver_name}"
             )
+
             invalid_invs = daikon.run_invariant_checker(self.args.specfuzzer_invs_file)
 
             # Build fully-qualified class name relative to src/main/java
@@ -538,3 +597,479 @@ class Core:
             logger.log_error(f"❌ Error during verification: {exc}")
             print(f"❌ Error during verification: {exc}")
             exit(1)
+
+    def run_bucketing_augmented(self):
+        logger = Logger(self.logs_output_dir + "/bucketing.log")
+        logger.log(f"Running bucketing (augmented) for {self.subject_id}.")
+        logger.log(f"Arguments: {self.args}")
+        try:
+            models_dir = os.path.join(self.output_dir, "test", "by_model")
+            if not os.path.isdir(models_dir):
+                raise FileNotFoundError(
+                    "No per-model tests were found. Run test generation first."
+                )
+
+            compiled_models = self._get_models_with_compiled_tests(models_dir)
+            if not compiled_models:
+                raise RuntimeError(
+                    "No compiled tests found for any model. Cannot run bucketing."
+                )
+
+            logger.log(
+                f"Found {len(compiled_models)} models with compiled tests: {list(compiled_models.keys())}"
+            )
+
+            for model_id, compiled_tests_path in compiled_models.items():
+                logger.log(f"Running bucketing for model: {model_id}")
+                self._run_bucketing_for_model(model_id, compiled_tests_path, logger)
+
+        except MutatedTraceGenerationError as e:
+            logger.log_error(f"❌ Error during bucketing: {e}")
+            print(f"❌ Error during bucketing: {e}")
+            exit(1)
+        except Exception as e:
+            logger.log_error(f"❌ Error during bucketing: {e}")
+            print(f"❌ Error during bucketing: {e}")
+            exit(1)
+
+    def _run_bucketing_for_model(
+        self, model_id: str, compiled_tests_path: str, logger: Logger
+    ) -> None:
+        compiled_tests = JavaTestSuite.extract_tests_from_file(compiled_tests_path)
+        if not compiled_tests:
+            logger.log_warning(
+                f"Model {model_id} has no compiled tests. Skipping bucketing."
+            )
+            return
+
+        logger.log(f"Loaded {len(compiled_tests)} compiled tests for model {model_id}")
+
+        sanitized_suffix = self._sanitize_identifier(model_id)
+        suite_suffix = f"Augmented{sanitized_suffix}"
+
+        renamed_tests = self.subject.test_suite._rename_test_methods(  # pylint: disable=protected-access
+            compiled_tests, f"llm{sanitized_suffix}"
+        )
+
+        test_suite_augmented = JavaTestFileUpdater.prepare_test_file(
+            self.args.test_suite, suite_suffix, is_driver=False
+        )
+        driver_augmented = JavaTestFileUpdater.prepare_test_file(
+            self.args.test_driver, suite_suffix, is_driver=True
+        )
+
+        logger.log("Cleaning project before updating suites")
+        self.compiler.compile_project(clean=True)
+
+        appender = JavaTestApender()
+        appender.insert_tests_into_suite(test_suite_augmented, renamed_tests)
+        appender.insert_tests_into_driver(driver_augmented, renamed_tests)
+
+        logger.log("Compiling augmented project")
+        self.compiler.compile_project(clean=False)
+
+        bucketing_root = Path(
+            _init_subdirectory(self.output_dir, "bucketing", preserve_existing=True)
+        ).resolve()
+        model_bucket_dir = Path(
+            _init_subdirectory(bucketing_root, f"model_{sanitized_suffix}")
+        ).resolve()
+        daikon_dir = Path(_init_subdirectory(model_bucket_dir, "daikon")).resolve()
+        setup_files_dir = Path(
+            _init_subdirectory(model_bucket_dir, "setup-files")
+        ).resolve()
+
+        driver_augmented_name = os.path.basename(driver_augmented).replace(".java", "")
+        driver_package = self.subject.test_driver.get_package_name()
+        driver_augmented_fq = (
+            f"{driver_package}.{driver_augmented_name}"
+            if driver_package
+            else driver_augmented_name
+        )
+
+        logger.log(
+            f"Running DynComp and Chicory for driver {driver_augmented_fq} (model {model_id})"
+        )
+
+        daikon_runner = Daikon(
+            self.subject,
+            driver_augmented_name,
+            driver_augmented_fq,
+            daikon_dir,
+        )
+
+        daikon_runner.run_dyn_comp()
+        daikon_runner.run_chicory_dtrace_generation()
+
+        comparability_file = os.path.join(
+            daikon_dir, f"{driver_augmented_name}.decls-DynComp"
+        )
+
+        major_home = os.environ.get("MAJOR_HOME")
+
+        if not major_home:
+            raise RuntimeError(
+                "MAJOR_HOME environment variable is not set. Unable to run Major."
+            )
+
+        logger.log(
+            f"Generating mutant traces with Major + Chicory for model {model_id}"
+        )
+
+        trace_generator = MutatedTraceGenerator(
+            major_home=major_home,
+            subject_root=str(self.subject.root_dir),
+            target_class_src=self.args.target_class_src,
+            driver_fq_name=driver_augmented_fq,
+            driver_name=driver_augmented_name,
+            comparability_file=comparability_file,
+            classpath=daikon_runner.cp_for_daikon,
+            setup_output_dir=setup_files_dir,
+            logger=logger,
+            timeout_seconds=600,
+            chicory_timeout=600,
+        )
+
+        traces = trace_generator.generate()
+
+        logger.log(
+            f"Mutant traces ready at {trace_generator.traces_output_dir} ({len(traces)} entries)"
+        )
+
+        # Now run the filtering step - check each mutant against the SpecFuzzer invariants
+        invs_file = str(Path(self.args.specfuzzer_invs_file).resolve())
+        assertions_file = str(Path(self.args.specfuzzer_assertions_file).resolve())
+        if not invs_file or not assertions_file:
+            logger.log_warning(
+                "SpecFuzzer invs/assertions not provided; skipping invariant filtering"
+            )
+            return
+
+        repo_root = Path(__file__).resolve().parents[1]
+        model_workdir = model_bucket_dir.resolve()
+        mutant_invs_dir = Path(_init_subdirectory(model_bucket_dir, "mutant-invs"))
+
+        # Seed invs-by-mutants.csv (required by single-mutant-result.py)
+        base_mutants_csv = Path(repo_root / "base-invs-by-mutants.csv")
+        target_mutants_csv = model_workdir / "invs-by-mutants.csv"
+        if base_mutants_csv.exists():
+            shutil.copyfile(base_mutants_csv, target_mutants_csv)
+        elif not target_mutants_csv.exists():
+            FileOperations.write_file(
+                str(target_mutants_csv), "invariant,ppt,iteration,mutant\n"
+            )
+
+        # Mutants log to filter only relevant mutations (constructor/static/method)
+        mutants_log = (
+            trace_generator.traces_output_dir / f"{driver_augmented_name}-mutants.log"
+        )
+        mutants_log_lines: list[str] = []
+        if mutants_log.exists():
+            mutants_log_lines = mutants_log.read_text().splitlines()
+
+        # Filtering step with optional time budget (90 minutes like in run-specfuzzer.sh)
+        filtering_budget = 5400  # 90 minutes in seconds
+        filtering_start_time = time.time()
+
+        processed_mutants = 0
+        for trace in sorted(trace_generator.traces_output_dir.glob("*.dtrace.gz")):
+            # Chicory writes `<driver>-mN.dtrace.gz` and `<driver>-mN-objects.xml`
+            base_no_ext = trace.name.replace(".dtrace.gz", "")
+            objects_file = (trace.parent / f"{base_no_ext}-objects.xml").resolve()
+            if not objects_file.exists():
+                logger.log_warning(
+                    f"Skipping mutant trace {trace} (objects file missing)"
+                )
+                continue
+
+            # Filter by target scope using mutants.log
+            # Only process mutants that affect: static methods, constructors, or the target method
+            mutant_index = 0
+            if base_no_ext.startswith(f"{driver_augmented_name}-m"):
+                try:
+                    mutant_index = int(base_no_ext.split("-m")[1])
+                except ValueError:
+                    mutant_index = 0
+
+            if mutant_index and mutants_log_lines:
+                if mutant_index - 1 < len(mutants_log_lines):
+                    curr_mutant = mutants_log_lines[mutant_index - 1]
+                    # Check if mutant is in target scope
+                    # Process if: static method (class:) OR constructor (class@<init>) OR target method
+                    is_in_scope = (
+                        f"{self.class_name}:" in curr_mutant
+                        or f"{self.class_name}@<init>" in curr_mutant
+                        or (
+                            self.class_name in curr_mutant
+                            and self.args.method in curr_mutant
+                        )
+                    )
+
+                    if not is_in_scope:
+                        logger.log(
+                            f"Skipping mutant {mutant_index} ({curr_mutant}): not in target scope"
+                        )
+                        continue
+                    else:
+                        logger.log(f"Processing mutant {mutant_index}: {curr_mutant}")
+
+            invs_csv = model_workdir / "invs.csv"
+            if invs_csv.exists():
+                invs_csv.unlink()
+            logger.log(f"InvariantChecker on mutant trace {trace}")
+            trace_arg = os.path.relpath(trace, model_workdir)
+            objects_arg = os.path.relpath(objects_file, model_workdir)
+
+            # Expand classpath to absolute paths to avoid issues with relative paths
+            expanded_cp = _expand_classpath(daikon_runner.cp_for_daikon)
+
+            cmd = [
+                "java",
+                "-Xmx8g",
+                "-cp",
+                expanded_cp,
+                "daikon.tools.InvariantChecker",
+                "--conf",
+                "--serialiazed-objects",
+                objects_arg,
+                invs_file,
+                trace_arg,
+            ]
+            try:
+                subprocess.run(
+                    cmd,
+                    check=True,
+                    timeout=daikon_runner.invariant_timeout,
+                    cwd=str(model_workdir),
+                )
+            except subprocess.CalledProcessError as exc:
+                logger.log_warning(f"InvariantChecker failed for {trace.name}: {exc}")
+            except subprocess.TimeoutExpired:
+                logger.log_warning(
+                    f"InvariantChecker timed out for {trace.name} after {daikon_runner.invariant_timeout}s"
+                )
+
+            if invs_csv.exists():
+                dest_csv = mutant_invs_dir / f"{trace.stem}.csv"
+                FileOperations.move_file(str(invs_csv), str(dest_csv))
+                helper = repo_root / "scripts" / "single-mutant-result.py"
+                if helper.exists():
+                    cmd_helper = [
+                        "python3",
+                        str(helper),
+                        str(dest_csv),
+                        "1",
+                        str(trace),
+                    ]
+                    try:
+                        subprocess.run(cmd_helper, check=False, cwd=str(model_workdir))
+                    except Exception as exc:  # noqa: BLE001
+                        logger.log_warning(
+                            f"single-mutant-result.py failed for {trace.name}: {exc}"
+                        )
+                processed_mutants += 1
+
+            # Check time budget
+            elapsed = time.time() - filtering_start_time
+            if elapsed > filtering_budget:
+                logger.log(
+                    f"Filtering step finished due to timeout: {elapsed:.1f}s (budget: {filtering_budget}s)"
+                )
+                break
+
+        filtering_sec = time.time() - filtering_start_time
+        logger.log(
+            f"Processed {processed_mutants} mutants for model {model_id} in {filtering_sec:.1f}s"
+        )
+
+        # Prepare output file names with specvalid prefix
+        specvalid_prefix = (
+            f"{self.class_name}-{self.args.method}-{sanitized_suffix}-specvalid"
+        )
+
+        # Copy invs-by-mutants.csv to output location
+        mutka_file = model_workdir / "invs-by-mutants.csv"
+        specvalid_mutka = model_bucket_dir / f"{specvalid_prefix}-invs-by-mutants.csv"
+        if mutka_file.exists():
+            shutil.copyfile(mutka_file, specvalid_mutka)
+            logger.log(f"Mutation killing ability results saved in: {specvalid_mutka}")
+        else:
+            logger.log_warning(f"invs-by-mutants.csv not found at {mutka_file}")
+
+        # Generate assertions file using Daikon PrintInvariants
+        # This prints OBJECT and EXIT program points in Java format
+        specvalid_assertions = model_bucket_dir / f"{specvalid_prefix}.assertions"
+        logger.log(f"Writing assertions to file: {specvalid_assertions}")
+
+        try:
+            # Expand classpath to absolute paths
+            expanded_cp = _expand_classpath(daikon_runner.cp_for_daikon)
+
+            # Print OBJECT invariants
+            cmd_object = [
+                "java",
+                "-cp",
+                expanded_cp,
+                "daikon.PrintInvariants",
+                invs_file,
+                "--ppt-select",
+                f".{self.class_name}:::OBJECT",
+                "--format",
+                "java",
+            ]
+            result_object = subprocess.run(
+                cmd_object,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=daikon_runner.invariant_timeout,
+            )
+
+            # Print EXIT (postcondition) invariants
+            cmd_exit = [
+                "java",
+                "-cp",
+                expanded_cp,
+                "daikon.PrintInvariants",
+                invs_file,
+                "--ppt-select",
+                f".{self.class_name}.{self.args.method}.",
+                "--format",
+                "java",
+            ]
+            result_exit = subprocess.run(
+                cmd_exit,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=daikon_runner.invariant_timeout,
+            )
+
+            # Combine both outputs
+            combined_output = result_object.stdout + result_exit.stdout
+            FileOperations.write_file(str(specvalid_assertions), combined_output)
+            logger.log(
+                f"✓ Assertions file generated with {len(combined_output.splitlines())} lines"
+            )
+
+        except subprocess.CalledProcessError as exc:
+            logger.log_warning(
+                f"PrintInvariants failed, falling back to specfuzzer assertions: {exc}"
+            )
+            # Fallback: use the existing specfuzzer assertions file
+            FileOperations.write_file(
+                str(specvalid_assertions), FileOperations.read_file(assertions_file)
+            )
+        except subprocess.TimeoutExpired:
+            logger.log_warning(
+                "PrintInvariants timed out, falling back to specfuzzer assertions"
+            )
+            FileOperations.write_file(
+                str(specvalid_assertions), FileOperations.read_file(assertions_file)
+            )
+
+        # Copy the inv.gz file to output location for reference
+        specvalid_inv_gz = model_bucket_dir / f"{specvalid_prefix}.inv.gz"
+        if Path(invs_file).exists():
+            shutil.copyfile(invs_file, specvalid_inv_gz)
+            logger.log(f"✓ Copied inv.gz to {specvalid_inv_gz}")
+
+        # Run buckets-filter.py to generate bucketed assertions
+        buckets_filter = repo_root / "scripts" / "buckets-filter.py"
+
+        # The buckets-filter.py script expects .assertion (without 's') and generates -buckets.assertion
+        # We need to create a temporary .assertion file (without 's') from the generated assertions
+        temp_assertions_file = model_bucket_dir / f"{specvalid_prefix}.assertion"
+        FileOperations.write_file(
+            str(temp_assertions_file),
+            FileOperations.read_file(str(specvalid_assertions)),
+        )
+
+        # The expected output file path (buckets-filter.py replaces .assertion with -buckets.assertion)
+        temp_bucket_assertions = (
+            model_bucket_dir / f"{specvalid_prefix}-buckets.assertion"
+        )
+        bucket_assertions_path = (
+            model_bucket_dir / f"{specvalid_prefix}-buckets.assertions"
+        )
+
+        if buckets_filter.exists() and specvalid_mutka.exists():
+            cmd_buckets = [
+                "python3",
+                str(buckets_filter),
+                str(specvalid_mutka),
+                str(temp_assertions_file),
+                self.class_name,
+                self.args.method,
+            ]
+            logger.log(f"Running buckets-filter.py: {' '.join(cmd_buckets)}")
+            try:
+                result = subprocess.run(
+                    cmd_buckets,
+                    check=True,
+                    cwd=str(repo_root),
+                    capture_output=True,
+                    text=True,
+                )
+                logger.log(f"buckets-filter.py output:\n{result.stdout}")
+
+                # Rename the output to use .assertions (with 's')
+                if temp_bucket_assertions.exists():
+                    shutil.move(
+                        str(temp_bucket_assertions), str(bucket_assertions_path)
+                    )
+                    logger.log(
+                        f"✓ Bucket assertions written to {bucket_assertions_path}"
+                    )
+                    logger.log(f"  Processed {processed_mutants} mutants")
+                    # Read and log bucket statistics
+                    with open(bucket_assertions_path, "r") as f:
+                        first_lines = [f.readline().strip() for _ in range(2)]
+                        logger.log(f"  Bucket stats: {first_lines}")
+                else:
+                    logger.log_warning(
+                        f"buckets-filter.py completed but did not create {temp_bucket_assertions}"
+                    )
+
+                # Clean up temporary file
+                if temp_assertions_file.exists():
+                    temp_assertions_file.unlink()
+
+            except subprocess.CalledProcessError as exc:
+                logger.log_warning(
+                    f"buckets-filter.py failed: {exc}\nStderr: {exc.stderr}"
+                )
+                # Fallback: copy assertions as buckets file
+                FileOperations.write_file(
+                    str(bucket_assertions_path),
+                    FileOperations.read_file(str(specvalid_assertions)),
+                )
+                # Clean up temporary file
+                if temp_assertions_file.exists():
+                    temp_assertions_file.unlink()
+                logger.log(
+                    f"Bucket assertions written to {bucket_assertions_path} (no clustering applied - fallback)"
+                )
+        else:
+            # Fallback: copy assertions as buckets file
+            FileOperations.write_file(
+                str(bucket_assertions_path),
+                FileOperations.read_file(temp_assertions_file),
+            )
+            logger.log(
+                f"Bucket assertions written to {bucket_assertions_path} (buckets-filter.py not found - fallback)"
+            )
+
+    def _get_models_with_compiled_tests(self, models_dir: str) -> dict:
+        models = {}
+        for model_name in sorted(os.listdir(models_dir)):
+            model_path = os.path.join(models_dir, model_name)
+            compiled_tests_file = os.path.join(model_path, "compiled_tests.java")
+            if os.path.isfile(compiled_tests_file):
+                models[model_name] = compiled_tests_file
+        return models
+
+    @staticmethod
+    def _sanitize_identifier(name: str) -> str:
+        sanitized = "".join(ch for ch in name if ch.isalnum())
+        return sanitized if sanitized else "Model"

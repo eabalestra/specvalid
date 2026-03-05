@@ -13,6 +13,8 @@ GASSERT_DIR="$SPECVALID_DIR/experiments/GAssert"
 export GASSERT_DIR
 SPECS_DIR="$SPECVALID_DIR/experiments/specfuzzer-subject-results"
 export SPECS_DIR
+MAJOR_HOME="$SPECVALID_DIR/experiments/major"
+export MAJOR_HOME
 
 VENV="$SPECVALID_DIR/.venv"
 VENV_ACTIVATED=0

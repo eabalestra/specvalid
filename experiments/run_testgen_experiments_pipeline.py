@@ -52,18 +52,17 @@ def get_subject_paths(subject_name, class_fq_name, method_name):
     paths = {
         "java_class_src": (f"{gassert_base}/src/main/java/{package_path}.java"),
         "java_test_suite": (
-            f"{gassert_base}/src/test/java/testers/" f"{class_name}Tester0.java"
+            f"{gassert_base}/src/test/java/testers/{class_name}Tester0.java"
         ),
         "java_test_driver": (
-            f"{gassert_base}/src/test/java/testers/" f"{class_name}TesterDriver.java"
+            f"{gassert_base}/src/test/java/testers/{class_name}TesterDriver.java"
         ),
         "bucket_assertions_file": (
             f"{specfuzzer_output_base}/{class_name}-{method_name}-"
             f"specfuzzer-1-buckets.assertions"
         ),
         "specfuzzer_invs_file": (
-            f"{specfuzzer_output_base}/{class_name}-{method_name}-"
-            f"specfuzzer-1.inv.gz"
+            f"{specfuzzer_output_base}/{class_name}-{method_name}-specfuzzer-1.inv.gz"
         ),
         "specfuzzer_assertions_file": (
             f"{specfuzzer_output_base}/{class_name}-{method_name}-"
@@ -207,7 +206,7 @@ def build_specvalid_command(paths, models, prompts, output_dir=None):
             paths["specfuzzer_invs_file"],
             "-sa",
             paths["specfuzzer_assertions_file"],
-            # "--reuse-tests",
+            "--reuse-tests",
         ]
     )
 
@@ -327,8 +326,7 @@ def main():
             successful_runs += 1
         else:
             print(
-                f"✗ Specvalid failed for {subject_name} - "
-                f"continuing with next subject"
+                f"✗ Specvalid failed for {subject_name} - continuing with next subject"
             )
             failed_runs += 1
 

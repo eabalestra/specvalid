@@ -1,12 +1,11 @@
 import re
-from typing import List
+from typing import List, Tuple
 
 from file_operations.file_ops import FileOperations
 from java_test_fixer.java_test_fixer import JavaTestFixer
 
 
 class JavaTestSuite:
-
     def __init__(self, path_to_class: str, path_to_suite: str, subject_id: str):
         self.subject_id = subject_id
         self.path_to_class = path_to_class
@@ -50,34 +49,15 @@ class JavaTestSuite:
         return self._rename_test_methods(all_compiled, "llmTest")
 
     def remove_assertions_from_test(self, test_code: str) -> str:
-        lines = test_code.split("\n")
-        result_lines = []
-        for line in lines:
-            assertion_patterns = [
-                # JUnit assertions: assertTrue, assertFalse, assertEquals, etc.
-                r"^\s*(?:[a-zA-Z0-9_.]+\.)?assert\w*\s*\(",
-                # Java native assert statements with parentheses
-                r"^\s*assert\s*\(",
-                # Java native assert statements with space (no parentheses)
-                r"^\s*assert\s+",
-                # fail statements with parentheses
-                r"^\s*(?:[a-zA-Z0-9_.]+\.)?fail\w*\s*\(",
-                # fail statements with space
-                r"^\s*(?:[a-zA-Z0-9_.]+\.)?fail\s+",
-            ]
-            is_assertion = any(
-                re.match(pattern, line, re.IGNORECASE) for pattern in assertion_patterns
-            )
-            if not is_assertion:
-                result_lines.append(line)
-        return "\n".join(result_lines)
+        return JavaTestFixer.remove_assertions_from_test(test_code)
 
     def repair_java_tests(self) -> list[str]:
         fixed_tests = []
         for test in self.test_list:
             fixed_test = self.remove_assertions_from_test(test)
             fixed_test = self.java_test_fixer.repair_java_test(fixed_test)
-            fixed_tests.append(fixed_test)
+            if fixed_test.strip():
+                fixed_tests.append(fixed_test)
         return self._rename_test_methods(fixed_tests, "llmTest")
 
     def write_test_suite(self, output_file: str):
@@ -92,8 +72,8 @@ class JavaTestSuite:
             output_dir: Base directory for output
             phase: Phase of processing ("raw", "fixed", "compiled")
         """
-        import os
         import json
+        import os
 
         for model_id, tests in self.tests_by_model.items():
             if not tests:
@@ -120,11 +100,56 @@ class JavaTestSuite:
                 json.dump(metadata, f, indent=2)
 
     def _rename_test_methods(self, test_methods: List[str], new_name: str) -> List[str]:
-        name_pattern = r"((?:public\s+)?void)\s+\w+\s*\([^)]*\)"
-        return [
-            re.sub(name_pattern, rf"\1 {new_name}{i}()", test_method)
-            for i, test_method in enumerate(test_methods)
-        ]
+        signature_pattern = re.compile(
+            r"^(\s*(?:(?:public|protected|private|static|final|synchronized|native|"
+            r"abstract|strictfp)\s+)*)void\s+(\w+)(\s*\()"
+        )
+        inline_signature_pattern = re.compile(r"(\bvoid)\s+(\w+)(\s*\()")
+        annotation_pattern = re.compile(
+            r"@\s*(?:\w+\.)*(?:Test|ParameterizedTest|RepeatedTest|TestFactory|TestTemplate)\b"
+        )
+        renamed_tests = []
+
+        for i, test_method in enumerate(test_methods):
+            lines = test_method.split("\n")
+            brace_depth = 0
+            seen_test_annotation = False
+            replaced = False
+            in_block_comment = False
+
+            for idx, line in enumerate(lines):
+                sanitized, in_block_comment = self._strip_comments_and_strings(
+                    line, in_block_comment
+                )
+                if annotation_pattern.search(sanitized):
+                    seen_test_annotation = True
+
+                if (
+                    not replaced
+                    and brace_depth == 0
+                    and (seen_test_annotation or idx == 0)
+                ):
+                    new_line = signature_pattern.sub(
+                        lambda m: f"{m.group(1)}void {new_name}{i}{m.group(3)}",
+                        line,
+                        count=1,
+                    )
+                    if new_line == line:
+                        new_line = inline_signature_pattern.sub(
+                            lambda m: f"{m.group(1)} {new_name}{i}{m.group(3)}",
+                            line,
+                            count=1,
+                        )
+                    if new_line != line:
+                        line = new_line
+                        replaced = True
+
+                lines[idx] = line
+                brace_depth += sanitized.count("{") - sanitized.count("}")
+
+            renamed_tests.append("\n".join(lines))
+
+        return renamed_tests
 
     @staticmethod
     def extract_tests_from_file(source_test_file: str) -> List[str]:
@@ -145,17 +170,141 @@ class JavaTestSuite:
         test_methods = []
         extracted_test = []
         test_case_started = False
+        entered_body = False
+        in_block_comment = False
+        found_signature = False
+        lines_since_start = 0
+        lines_since_signature = 0
+        max_signature_lines = 8
+        max_body_lines = 8
         lines = content.split("\n")
-        test_start_pattern = re.compile(r"^\s*@Test")
+        test_start_pattern = re.compile(
+            r"@\s*(?:\w+\.)*(?:Test|ParameterizedTest|RepeatedTest|TestFactory|TestTemplate)\b"
+        )
+        signature_pattern = re.compile(r"\bvoid\s+\w+\s*\([^)]*\)")
 
         for line in lines:
-            if test_start_pattern.match(line):
+            sanitized, in_block_comment = JavaTestSuite._strip_comments_and_strings(
+                line, in_block_comment
+            )
+            if test_start_pattern.search(sanitized):
+                if test_case_started:
+                    # If a new @Test appears while inside a body, the previous test
+                    # likely has unbalanced braces; drop it and start fresh.
+                    extracted_test = []
+                    brace_count = 0
+                    entered_body = False
+                    found_signature = False
+                    lines_since_start = 0
+                    lines_since_signature = 0
                 test_case_started = True
+                brace_count = 0
+                entered_body = False
+                found_signature = False
+                lines_since_start = 0
+                lines_since_signature = 0
+                extracted_test = []
+
             if test_case_started:
                 extracted_test.append(line)
-                brace_count += line.count("{") - line.count("}")
-                if brace_count == 0 and line.strip().endswith("}"):
+                lines_since_start += 1
+                if not found_signature and signature_pattern.search(sanitized):
+                    found_signature = True
+                    lines_since_signature = 0
+                if found_signature:
+                    lines_since_signature += 1
+                    brace_count += sanitized.count("{") - sanitized.count("}")
+                    if brace_count > 0:
+                        entered_body = True
+
+                if not found_signature and lines_since_start > max_signature_lines:
+                    test_case_started = False
+                    extracted_test = []
+                    brace_count = 0
+                    entered_body = False
+                    found_signature = False
+                    lines_since_start = 0
+                    lines_since_signature = 0
+                    continue
+
+                if found_signature and not entered_body and lines_since_signature > max_body_lines:
+                    test_case_started = False
+                    extracted_test = []
+                    brace_count = 0
+                    entered_body = False
+                    found_signature = False
+                    lines_since_start = 0
+                    lines_since_signature = 0
+                    continue
+
+                if entered_body and brace_count == 0:
                     test_case_started = False
                     test_methods.append("\n".join(extracted_test))
                     extracted_test = []
+                    brace_count = 0
+                    entered_body = False
+                    found_signature = False
+                    lines_since_start = 0
+                    lines_since_signature = 0
+
         return test_methods
+
+    @staticmethod
+    def _strip_comments_and_strings(
+        line: str, in_block_comment: bool
+    ) -> Tuple[str, bool]:
+        out = []
+        i = 0
+        in_single_quote = False
+        in_double_quote = False
+        escape = False
+
+        while i < len(line):
+            ch = line[i]
+            if in_block_comment:
+                end = line.find("*/", i)
+                if end == -1:
+                    return "", True
+                i = end + 2
+                in_block_comment = False
+                continue
+
+            if in_single_quote:
+                if escape:
+                    escape = False
+                elif ch == "\\":
+                    escape = True
+                elif ch == "'":
+                    in_single_quote = False
+                i += 1
+                continue
+
+            if in_double_quote:
+                if escape:
+                    escape = False
+                elif ch == "\\":
+                    escape = True
+                elif ch == '"':
+                    in_double_quote = False
+                i += 1
+                continue
+
+            if line.startswith("/*", i):
+                in_block_comment = True
+                i += 2
+                continue
+            if line.startswith("//", i):
+                break
+            if ch == "'":
+                in_single_quote = True
+                i += 1
+                continue
+            if ch == '"':
+                in_double_quote = True
+                i += 1
+                continue
+
+            out.append(ch)
+            i += 1
+
+        return "".join(out), in_block_comment

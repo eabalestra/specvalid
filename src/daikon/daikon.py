@@ -1,7 +1,8 @@
 import os
-from pathlib import Path
 import subprocess
+from pathlib import Path
 from typing import Optional
+
 from file_operations.file_ops import FileOperations
 from subject.subject import Subject
 
@@ -10,7 +11,6 @@ DEFAULT_INVARIANT_TIMEOUT = 3600  # seconds
 
 
 class Daikon:
-
     def __init__(
         self,
         subject: Subject,
@@ -91,7 +91,7 @@ class Daikon:
             )
         except subprocess.CalledProcessError as e:
             error_msg = "Error running Chicory DTrace generation.\n"
-            error_msg += f"Command: {' '.join(cmd)}\n"
+            error_msg += f"Command: {' '.join(str(part) for part in cmd)}\n"
             error_msg += f"Return code: {e.returncode}\n"
             if e.stdout:
                 error_msg += f"Stdout: {e.stdout}\n"
@@ -122,7 +122,6 @@ class Daikon:
             subprocess.run(
                 cmd,
                 check=True,
-                stdout=subprocess.DEVNULL,
                 timeout=self.invariant_timeout,
             )
             FileOperations.move_file("invs.csv", self.output_dir)

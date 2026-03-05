@@ -1,5 +1,6 @@
 import os
 import sys
+
 import pandas as pd
 
 
@@ -52,12 +53,10 @@ if len(sys.argv) > 3:
 
     os.makedirs(output_directory, exist_ok=True)
 
-    output_file = (
-        f"{output_directory}/{class_name}-{method_name}-specfuzzer-refined.assertions"
-    )
+    output_file = f"{output_directory}/{class_name}-{method_name}-specvalid.assertions"
 
     write_specs_to_file(difference, output_file)
     write_specs_to_file(
         filtered_specs,
-        f"{output_directory}/{class_name}-{method_name}-specvalid-filtered.assertions",
+        f"{output_directory}/{class_name}-{method_name}-specfuzzer-filtered.assertions",
     )

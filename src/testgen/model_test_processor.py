@@ -61,7 +61,8 @@ class ModelTestProcessor:
                 # Remove assertions and apply fixes
                 fixed_test = test_suite.remove_assertions_from_test(test)
                 fixed_test = test_suite.java_test_fixer.repair_java_test(fixed_test)
-                fixed_tests.append(fixed_test)
+                if fixed_test.strip():
+                    fixed_tests.append(fixed_test)
             except Exception as e:
                 self.logger.log_warning(f"Failed to fix test: {e}")
         return fixed_tests

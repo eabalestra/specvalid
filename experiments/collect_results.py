@@ -1,6 +1,7 @@
+import csv
 import os
 import re
-import csv
+from collections import defaultdict
 
 
 def load_subject_mapping(subjects_file):
@@ -85,106 +86,177 @@ def create_name_mapping(subjects_map, existing_subjects):
 def extract_test_counts(log_file):
     """
     Extract the number of generated and compiled tests from testgen.log.
+    Returns: dict with model_id -> {raw_tests, compiled_tests}
     """
-    generated_tests = 0
-    compiled_tests = 0
+    model_test_counts = {}
 
     try:
         with open(log_file, "r") as f:
             content = f.read()
 
-            # Find the number of generated tests - updated pattern
-            gen_match = re.search(r"Processing (\d+) tests for", content)
-            if gen_match:
-                generated_tests = int(gen_match.group(1))
+            # Find all model statistics: "Model {model}: {raw} raw -> {compiled} compiled"
+            pattern = r"Model ([^:]+): (\d+) raw -> (\d+) compiled"
+            matches = re.findall(pattern, content)
 
-            # Find the number of compiled tests
-            comp_match = re.search(r"Compiled (\d+) tests successfully", content)
-            if comp_match:
-                compiled_tests = int(comp_match.group(1))
+            for model_name, raw_tests, compiled_tests in matches:
+                model_test_counts[model_name] = {
+                    "raw_tests": int(raw_tests),
+                    "compiled_tests": int(compiled_tests),
+                }
 
-        return generated_tests, compiled_tests
+        return model_test_counts
 
     except Exception as e:
         print(f"Error processing {log_file}: {str(e)}")
-        return 0, 0
+        return {}
 
 
 def extract_spec_counts(invfilter_log_file):
     """
-    Extract the number of specifications from invfilter.log.
+    Extract the number of filtered specifications from invfilter.log per model.
+    Returns: dict with model_id -> filtered_specs_count
     """
-    specs_in_buckets = 0
-    filtered_specs = 0
+    specs_counts_by_model = {}
 
     try:
         with open(invfilter_log_file, "r") as f:
             content = f.read()
 
-            # Find the number of original specs
-            buckets_match = re.search(r"Specs from .*\.assertions: (\d+)", content)
-            if buckets_match:
-                specs_in_buckets = int(buckets_match.group(1))
+            # Look for model-specific filtering sections
+            lines = content.split("\n")
+            current_model = None
 
-            # Find the number of filtered specs
-            filtered_match = re.search(r"Filtered specs: (\d+)", content)
-            if filtered_match:
-                filtered_specs = int(filtered_match.group(1))
+            for line in lines:
+                # Look for "Running invariant filtering for tests from model: {model}"
+                model_match = re.search(
+                    r"Running invariant filtering for tests from model: (.+)", line
+                )
+                if model_match:
+                    current_model = model_match.group(1).strip()
 
-        return specs_in_buckets, filtered_specs
+                # Look for filtered specs count
+                if current_model and "Filtered specs:" in line:
+                    specs_match = re.search(r"Filtered specs: (\d+)", line)
+                    if specs_match:
+                        filtered_count = int(specs_match.group(1))
+                        specs_counts_by_model[current_model] = filtered_count
+                        current_model = None  # Reset after finding the count
+
+        return specs_counts_by_model
 
     except Exception as e:
         print(f"Error processing {invfilter_log_file}: {str(e)}")
-        return 0, 0
+        return {}
+
+
+def normalize_model_name(model_name):
+    """
+    Normalize model names to handle inconsistencies like:
+    N_DeepSeekR1 vs NDeepSeekR1, N_Llama3370Instruct vs NLlama3370Instruct
+    Returns the normalized name (without underscores after N)
+    """
+    # Remove underscores that appear after N prefix
+    if model_name.startswith("N_"):
+        return "N" + model_name[2:]
+    return model_name
+
+
+def extract_bucket_specs_counts(bucketing_dir, class_name, method_name):
+    """
+    Extract the number of specs post-bucket from bucketing directory per model.
+    Reads from bucketing/model_{model}/*-specvalid-buckets.assertions
+    Returns: dict with model_id -> specs_count (using normalized names)
+    """
+    bucket_specs_by_model = {}
+
+    if not os.path.exists(bucketing_dir):
+        return bucket_specs_by_model
+
+    try:
+        for model_dir_name in os.listdir(bucketing_dir):
+            model_dir = os.path.join(bucketing_dir, model_dir_name)
+            if not os.path.isdir(model_dir) or not model_dir_name.startswith("model_"):
+                continue
+
+            # Extract model name from directory name (model_GPT51 -> GPT51)
+            model_name = model_dir_name.replace("model_", "")
+
+            # Find the buckets assertions file
+            for filename in os.listdir(model_dir):
+                if filename.endswith("-specvalid-buckets.assertions"):
+                    filepath = os.path.join(model_dir, filename)
+                    try:
+                        with open(filepath, "r") as f:
+                            for line in f:
+                                # Look for "specs={count}" line
+                                if line.startswith("specs="):
+                                    specs_count = int(line.strip().split("=")[1])
+                                    bucket_specs_by_model[model_name] = specs_count
+                                    break
+                    except Exception as e:
+                        print(f"Error reading {filepath}: {e}")
+                    break
+
+    except Exception as e:
+        print(f"Error reading bucketing directory {bucketing_dir}: {e}")
+
+    return bucket_specs_by_model
+
+
+def count_specs_in_file(filepath):
+    """
+    Count the number of valid specs in an assertions file.
+    For bucket files (*-buckets.assertions), read the specs= header.
+    For regular assertion files, count lines manually.
+    """
+    if not os.path.exists(filepath):
+        return 0
+
+    try:
+        with open(filepath, "r") as f:
+            lines = f.readlines()
+
+        # Check if this is a buckets file with header
+        if filepath.endswith("-buckets.assertions") and len(lines) > 0:
+            # Look for "specs=" in first few lines
+            for line in lines[:5]:
+                if line.startswith("specs="):
+                    return int(line.strip().split("=")[1])
+
+        # Fall back to manual counting for regular assertion files
+        specs = {line.strip() for line in lines}
+
+        # Filter out separators and special entries
+        specs = {
+            item
+            for item in specs
+            if item
+            and not item.startswith("buckets=")
+            and not item.startswith("specs=")
+            and not item.startswith(
+                "==========================================================================="
+            )
+            and ":::OBJECT" not in item
+            and ":::ENTER" not in item
+            and ":::EXIT" not in item
+        }
+        return len(specs)
+    except Exception as e:
+        print(f"Error reading {filepath}: {str(e)}")
+        return 0
 
 
 def extract_model_stats(model_output_dir):
     """
     Extract statistics for individual models from their directories.
     Returns dict with model stats: {model_id: stats}
+    Note: This function is kept for compatibility but most data now comes from logs.
     """
     model_stats = {}
     by_model_dir = os.path.join(model_output_dir, "by_model")
 
     if not os.path.exists(by_model_dir):
         return model_stats
-
-    # Read invfilter.log to get specs counts per model
-    invfilter_log = os.path.join(
-        os.path.dirname(model_output_dir), "logs", "invfilter.log"
-    )
-    specs_counts_by_model = {}
-
-    if os.path.exists(invfilter_log):
-        try:
-            with open(invfilter_log, "r") as f:
-                content = f.read()
-
-                # Find all sections for each model
-                import re
-
-                # Look for model-specific filtering sections
-                lines = content.split("\n")
-                current_model = None
-
-                for line in lines:
-                    # Look for model directory references to identify which model
-                    if "by_model/" in line and "specs/interest-specs.csv" in line:
-                        model_match = re.search(r"by_model/([^/]+)/specs", line)
-                        if model_match:
-                            current_model = model_match.group(1)
-
-                    # Look for filtered specs count
-                    if current_model and line.strip().startswith("Filtered specs:"):
-                        specs_match = re.search(r"Filtered specs: (\d+)", line)
-                        if specs_match:
-                            filtered_count = int(specs_match.group(1))
-                            if current_model not in specs_counts_by_model:
-                                specs_counts_by_model[current_model] = filtered_count
-                            current_model = None  # Reset after finding the count
-
-        except Exception as e:
-            print(f"Error reading invfilter.log: {e}")
 
     for model_name in os.listdir(by_model_dir):
         model_dir = os.path.join(by_model_dir, model_name)
@@ -194,13 +266,11 @@ def extract_model_stats(model_output_dir):
         stats = {
             "raw_tests": 0,
             "compiled_tests": 0,
-            "fixed_tests": 0,
-            "specs_in_buckets": 0,
-            "filtered_specs": 0,
+            "new_specs_filtered": 0,
         }
 
-        # Read metadata files for test counts
-        for phase in ["raw", "compiled", "fixed"]:
+        # Read metadata files for test counts (if they exist)
+        for phase in ["raw", "compiled"]:
             metadata_file = os.path.join(model_dir, f"{phase}_metadata.json")
             if os.path.exists(metadata_file):
                 try:
@@ -213,28 +283,8 @@ def extract_model_stats(model_output_dir):
                             stats["raw_tests"] = test_count
                         elif phase == "compiled":
                             stats["compiled_tests"] = test_count
-                        elif phase == "fixed":
-                            stats["fixed_tests"] = test_count
                 except Exception as e:
                     print(f"Error reading {metadata_file}: {e}")
-
-        # Use specs count from invfilter.log if available
-        if model_name in specs_counts_by_model:
-            stats["filtered_specs"] = specs_counts_by_model[model_name]
-        else:
-            # Fallback: Read specs from model-specific directory
-            model_specs_dir = os.path.join(model_dir, "specs")
-            if os.path.exists(model_specs_dir):
-                specs_file = os.path.join(model_specs_dir, "interest-specs.csv")
-                if os.path.exists(specs_file):
-                    try:
-                        with open(specs_file, "r") as f:
-                            lines = f.readlines()
-                            # Count non-header lines
-                            specs_count = max(0, len(lines) - 1)
-                            stats["filtered_specs"] = specs_count
-                    except Exception as e:
-                        print(f"Error reading {specs_file}: {e}")
 
         model_stats[model_name] = stats
 
@@ -242,21 +292,14 @@ def extract_model_stats(model_output_dir):
 
 
 def calculate_success_rates(stats):
-    """Calculate success rates following the priority: generated -> fixed -> compiled"""
+    """Calculate success rates: generated -> compiled"""
     generated = stats.get("raw_tests", 0)
-    fixed = stats.get("fixed_tests", 0)
     compiled = stats.get("compiled_tests", 0)
 
-    # Primary metric: Generation to Fix rate (most important)
-    gen_to_fix_rate = (fixed / generated * 100) if generated > 0 else 0.0
-
-    # Secondary metric: Fix to Compilation rate
-    fix_to_comp_rate = (compiled / fixed * 100) if fixed > 0 else 0.0
-
-    # Overall end-to-end rate (for reference)
+    # Overall success rate
     overall_rate = (compiled / generated * 100) if generated > 0 else 0.0
 
-    return gen_to_fix_rate, fix_to_comp_rate, overall_rate
+    return overall_rate
 
 
 def get_best_performing_models(model_results):
@@ -269,17 +312,15 @@ def get_best_performing_models(model_results):
             model_performance[model] = {
                 "subjects": [],
                 "total_generated": 0,
-                "total_fixed": 0,
                 "total_compiled": 0,
-                "total_specs": 0,
+                "total_specs_filtered": 0,
             }
 
         perf = model_performance[model]
         perf["subjects"].append(result["SUBJECT"])
-        perf["total_generated"] += result["TESTS_GENERATED"]
-        perf["total_fixed"] += result["TESTS_FIXED"]
+        perf["total_generated"] += result["TESTS_GENERATED_BY_LLM"]
         perf["total_compiled"] += result["TESTS_COMPILED"]
-        perf["total_specs"] += result["SPECS_FILTERED"]
+        perf["total_specs_filtered"] += result["NEW_SPECS_FILTERED_PRE-BUCKET"]
 
     # Calculate aggregate rates for each model
     best_models = []
@@ -289,15 +330,14 @@ def get_best_performing_models(model_results):
                 "MODEL": model,
                 "SUBJECTS": len(perf["subjects"]),
                 "GENERATED": perf["total_generated"],
-                "FIXED": perf["total_fixed"],
                 "COMPILED": perf["total_compiled"],
-                "SPECS_FILTERED": perf["total_specs"],
+                "NEW_SPECS_FILTERED": perf["total_specs_filtered"],
             }
         )
 
     # Sort by specifications filtered first, then by tests compiled
     best_models.sort(
-        key=lambda x: (x["SPECS_FILTERED"], x["COMPILED"], x["FIXED"]), reverse=True
+        key=lambda x: (x["NEW_SPECS_FILTERED"], x["COMPILED"]), reverse=True
     )
 
     return best_models
@@ -319,13 +359,12 @@ def get_best_model_per_subject(unified_results, subjects_order):
     for subject in subjects_order:
         if subject in subjects_summary:
             results = subjects_summary[subject]
-            # Sort by specs filtered first, then by tests compiled, then fixed
+            # Sort by specs filtered first, then by tests compiled
             best_result = max(
                 results,
                 key=lambda x: (
-                    x["SPECS_FILTERED"],
+                    x["NEW_SPECS_FILTERED_PRE-BUCKET"],
                     x["TESTS_COMPILED"],
-                    x["TESTS_FIXED"],
                 ),
             )
 
@@ -335,11 +374,18 @@ def get_best_model_per_subject(unified_results, subjects_order):
                     "CLASS": best_result["CLASS"],
                     "METHOD": best_result["METHOD"],
                     "BEST_MODEL": best_result["MODEL"],
-                    "SPECS_AVAILABLE": best_result["SPECS_AVAILABLE"],
-                    "TESTS_GENERATED": best_result["TESTS_GENERATED"],
-                    "TESTS_FIXED": best_result["TESTS_FIXED"],
+                    "SPECFUZZER_SPECS_PRE-BUCKET": best_result[
+                        "SPECFUZZER_SPECS_PRE-BUCKET"
+                    ],
+                    "SPECFUZZER_SPECS_POST-BUCKET": best_result[
+                        "SPECFUZZER_SPECS_POST-BUCKET"
+                    ],
+                    "TESTS_GENERATED_BY_LLM": best_result["TESTS_GENERATED_BY_LLM"],
                     "TESTS_COMPILED": best_result["TESTS_COMPILED"],
-                    "SPECS_FILTERED": best_result["SPECS_FILTERED"],
+                    "NEW_SPECS_FILTERED_PRE-BUCKET": best_result[
+                        "NEW_SPECS_FILTERED_PRE-BUCKET"
+                    ],
+                    "NEW_SPECS_POST-BUCKET": best_result["NEW_SPECS_POST-BUCKET"],
                 }
             )
 
@@ -349,9 +395,8 @@ def get_best_model_per_subject(unified_results, subjects_order):
             best_result = max(
                 results,
                 key=lambda x: (
-                    x["SPECS_FILTERED"],
+                    x["NEW_SPECS_FILTERED_PRE-BUCKET"],
                     x["TESTS_COMPILED"],
-                    x["TESTS_FIXED"],
                 ),
             )
 
@@ -361,11 +406,18 @@ def get_best_model_per_subject(unified_results, subjects_order):
                     "CLASS": best_result["CLASS"],
                     "METHOD": best_result["METHOD"],
                     "BEST_MODEL": best_result["MODEL"],
-                    "SPECS_AVAILABLE": best_result["SPECS_AVAILABLE"],
-                    "TESTS_GENERATED": best_result["TESTS_GENERATED"],
-                    "TESTS_FIXED": best_result["TESTS_FIXED"],
+                    "SPECFUZZER_SPECS_PRE-BUCKET": best_result[
+                        "SPECFUZZER_SPECS_PRE-BUCKET"
+                    ],
+                    "SPECFUZZER_SPECS_POST-BUCKET": best_result[
+                        "SPECFUZZER_SPECS_POST-BUCKET"
+                    ],
+                    "TESTS_GENERATED_BY_LLM": best_result["TESTS_GENERATED_BY_LLM"],
                     "TESTS_COMPILED": best_result["TESTS_COMPILED"],
-                    "SPECS_FILTERED": best_result["SPECS_FILTERED"],
+                    "NEW_SPECS_FILTERED_PRE-BUCKET": best_result[
+                        "NEW_SPECS_FILTERED_PRE-BUCKET"
+                    ],
+                    "NEW_SPECS_POST-BUCKET": best_result["NEW_SPECS_POST-BUCKET"],
                 }
             )
 
@@ -383,6 +435,10 @@ def main():
     # List to store results - unified approach
     unified_results = []
 
+    # Keep ordered subject metadata (subject, class, method) to ensure coverage per model
+    ordered_subject_entries = []
+    seen_subjects = set()
+
     # Find all subject directories that actually exist in output
     existing_subjects = [
         d for d in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, d))
@@ -391,57 +447,160 @@ def main():
     # Create mapping between actual directory names and subject info
     name_mapping = create_name_mapping(subjects_map, existing_subjects)
 
-    # Create ordered list based on subjects file, but using actual directory names
-    ordered_existing_subjects = []
+    # Build ordered processing list: start with subjects file order, then extras
+    processing_list = []  # entries: (mapped_subject, actual_dir_name_or_none)
+    used_existing = set()
 
-    # First, add subjects in the order from subjects file
     for subject in subjects_order:
-        # Find the actual directory name that corresponds to this subject
+        existing_match = None
         for existing_subject, (mapped_subject, _) in name_mapping.items():
             if mapped_subject == subject:
-                ordered_existing_subjects.append(existing_subject)
+                existing_match = existing_subject
+                used_existing.add(existing_subject)
                 break
+        processing_list.append((subject, existing_match))
 
-    # Add any remaining subjects that weren't in the subjects file
+    # Add any remaining subjects that weren't in the subjects file (extra outputs)
     for existing_subject in existing_subjects:
-        if existing_subject not in ordered_existing_subjects:
-            ordered_existing_subjects.append(existing_subject)
+        if existing_subject not in used_existing:
+            mapped_subject, _info = name_mapping.get(
+                existing_subject, (existing_subject, ("", ""))
+            )
+            processing_list.append((mapped_subject, existing_subject))
 
     # Process subjects in order - collect all data in one pass
-    for subject in ordered_existing_subjects:
-        # Get class and method names from mapping
-        if subject in name_mapping:
-            mapped_subject, (class_name, method_name) = name_mapping[subject]
+    for mapped_subject, actual_dir in processing_list:
+        # Get class and method names from subjects_map (preferred) or mapping
+        if mapped_subject in subjects_map:
+            class_name, method_name = subjects_map[mapped_subject]
+        elif actual_dir and actual_dir in name_mapping:
+            _mapped, (class_name, method_name) = name_mapping[actual_dir]
         else:
-            mapped_subject, class_name, method_name = subject, "", ""
+            class_name, method_name = "", ""
 
-        # Paths to the log files in new structure
-        invfilter_log_file = os.path.join(base_dir, subject, "logs", "invfilter.log")
-        test_output_dir = os.path.join(base_dir, subject, "test")
+        if mapped_subject not in seen_subjects:
+            ordered_subject_entries.append(
+                {
+                    "SUBJECT": mapped_subject,
+                    "CLASS": class_name,
+                    "METHOD": method_name,
+                }
+            )
+            seen_subjects.add(mapped_subject)
 
-        # Extract specifications stats (consistent across all models for a subject)
-        specs_in_buckets, filtered_specs = 0, 0
-        if os.path.exists(invfilter_log_file):
-            specs_in_buckets, filtered_specs = extract_spec_counts(invfilter_log_file)
+        # Extract simple class name for file paths
+        simple_class_name = (
+            class_name.split(".")[-1] if "." in class_name else class_name
+        )
 
-        # Extract model-specific statistics
-        model_stats = extract_model_stats(test_output_dir)
+        # Paths to the log files and directories
+        if actual_dir:
+            testgen_log_file = os.path.join(base_dir, actual_dir, "logs", "testgen.log")
+            invfilter_log_file = os.path.join(
+                base_dir, actual_dir, "logs", "invfilter.log"
+            )
+            bucketing_dir = os.path.join(base_dir, actual_dir, "bucketing")
+            test_output_dir = os.path.join(base_dir, actual_dir, "test")
+        else:
+            # Subject not present in outputs; paths point to nowhere
+            testgen_log_file = ""
+            invfilter_log_file = ""
+            bucketing_dir = ""
+            test_output_dir = ""
+
+        # Try to get specs from specfuzzer-subject-results
+        specs_dir = os.environ.get(
+            "SPECS_DIR", "experiments/specfuzzer-subject-results"
+        )
+
+        # PRE-BUCKET: Read from .assertions file (before bucketing)
+        pre_bucket_file = os.path.join(
+            specs_dir,
+            mapped_subject,
+            "output",
+            f"{simple_class_name}-{method_name}-specfuzzer-1.assertions",
+        )
+        specs_pre_bucket = count_specs_in_file(pre_bucket_file)
+
+        # POST-BUCKET: Read from -buckets.assertions file (after bucketing)
+        post_bucket_file = os.path.join(
+            specs_dir,
+            mapped_subject,
+            "output",
+            f"{simple_class_name}-{method_name}-specfuzzer-1-buckets.assertions",
+        )
+        specs_post_bucket = count_specs_in_file(post_bucket_file)
+
+        # Extract test counts per model from testgen.log
+        model_test_counts = {}
+        if testgen_log_file and os.path.exists(testgen_log_file):
+            model_test_counts = extract_test_counts(testgen_log_file)
+
+        # Extract NEW_SPECS_FILTERED_PRE-BUCKET per model from invfilter.log
+        specs_filtered_by_model = {}
+        if invfilter_log_file and os.path.exists(invfilter_log_file):
+            specs_filtered_by_model = extract_spec_counts(invfilter_log_file)
+
+        # Extract NEW_SPECS_POST-BUCKET per model from bucketing directory
+        bucket_specs_by_model = {}
+        if bucketing_dir and os.path.exists(bucketing_dir):
+            bucket_specs_by_model = extract_bucket_specs_counts(
+                bucketing_dir, simple_class_name, method_name
+            )
+
+        # Get list of all models from test output dir
+        model_stats = extract_model_stats(test_output_dir) if test_output_dir else {}
+
+        # Collect all model names and normalize them
+        # Use model names from testgen.log as the canonical source
+        all_models = set()
+        for m in model_test_counts.keys():
+            all_models.add(m)
+
+        # If no models from testgen, use other sources
+        if not all_models:
+            all_models.update(model_stats.keys())
+            all_models.update(specs_filtered_by_model.keys())
+
+        # If still none, create a placeholder model so the subject appears in CSV
+        if not all_models:
+            all_models.add("NO_MODEL_OUTPUT")
 
         # Create unified results with proper priority ordering
-        for model_id, stats in model_stats.items():
-            rates = calculate_success_rates(stats)
-            gen_to_fix_rate, fix_to_comp_rate, overall_rate = rates
+        for model_id in all_models:
+            # Get test counts from testgen.log (primary source)
+            test_data = model_test_counts.get(model_id, {})
+            raw_tests = test_data.get("raw_tests", 0)
+            compiled_tests = test_data.get("compiled_tests", 0)
+
+            # Fall back to metadata if testgen.log doesn't have data
+            if raw_tests == 0 and model_id in model_stats:
+                raw_tests = model_stats[model_id].get("raw_tests", 0)
+                compiled_tests = model_stats[model_id].get("compiled_tests", 0)
+
+            # NEW_SPECS_FILTERED_PRE-BUCKET from invfilter.log
+            new_specs_filtered = specs_filtered_by_model.get(model_id, 0)
+
+            # NEW_SPECS_POST-BUCKET from bucketing directory
+            # Need to normalize model name (N_Llama3370Instruct -> NLlama3370Instruct)
+            normalized_model = normalize_model_name(model_id)
+            new_specs_post_bucket = bucket_specs_by_model.get(normalized_model, 0)
+
+            # Also try with the original name
+            if new_specs_post_bucket == 0:
+                new_specs_post_bucket = bucket_specs_by_model.get(model_id, 0)
 
             unified_result = {
                 "SUBJECT": mapped_subject,
                 "CLASS": class_name,
                 "METHOD": method_name,
                 "MODEL": model_id,
-                "SPECS_AVAILABLE": specs_in_buckets,
-                "TESTS_GENERATED": stats["raw_tests"],
-                "TESTS_FIXED": stats["fixed_tests"],
-                "TESTS_COMPILED": stats["compiled_tests"],
-                "SPECS_FILTERED": stats["filtered_specs"],
+                "SPECFUZZER_SPECS_PRE-BUCKET": specs_pre_bucket,
+                "SPECFUZZER_SPECS_POST-BUCKET": specs_post_bucket,
+                "TESTS_GENERATED_BY_LLM": raw_tests,
+                "TESTS_COMPILED": compiled_tests,
+                "NEW_SPECS_FILTERED_PRE-BUCKET": new_specs_filtered,
+                "NEW_SPECS_POST-BUCKET": new_specs_post_bucket,
             }
             unified_results.append(unified_result)
 
@@ -457,15 +616,111 @@ def main():
                 "CLASS",
                 "METHOD",
                 "MODEL",
-                "SPECS_AVAILABLE",
-                "TESTS_GENERATED",
-                "TESTS_FIXED",
+                "SPECFUZZER_SPECS_PRE-BUCKET",
+                "SPECFUZZER_SPECS_POST-BUCKET",
+                "TESTS_GENERATED_BY_LLM",
                 "TESTS_COMPILED",
-                "SPECS_FILTERED",
+                "NEW_SPECS_FILTERED_PRE-BUCKET",
+                "NEW_SPECS_POST-BUCKET",
             ]
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(unified_results)
+
+        # Additionally, generate per-model CSVs and a summary-by-model table
+        by_model = defaultdict(list)
+        for row in unified_results:
+            by_model[row["MODEL"]].append(row)
+
+        # Directory for per-model outputs
+        per_model_dir = "experiments/results/by_model"
+        os.makedirs(per_model_dir, exist_ok=True)
+
+        def _safe_name(name: str) -> str:
+            return re.sub(r"[^A-Za-z0-9_.-]", "_", name)
+
+        # Build summary rows while writing individual model CSVs
+        summary_rows = []
+        for model, rows in by_model.items():
+            # Ensure every subject appears for every model; fill missing with zeros
+            rows_by_subject = {r["SUBJECT"]: r for r in rows}
+            complete_rows = []
+            for subj_entry in ordered_subject_entries:
+                subj = subj_entry["SUBJECT"]
+                if subj in rows_by_subject:
+                    complete_rows.append(rows_by_subject[subj])
+                else:
+                    complete_rows.append(
+                        {
+                            "SUBJECT": subj,
+                            "CLASS": subj_entry["CLASS"],
+                            "METHOD": subj_entry["METHOD"],
+                            "MODEL": model,
+                            "SPECFUZZER_SPECS_PRE-BUCKET": 0,
+                            "SPECFUZZER_SPECS_POST-BUCKET": 0,
+                            "TESTS_GENERATED_BY_LLM": 0,
+                            "TESTS_COMPILED": 0,
+                            "NEW_SPECS_FILTERED_PRE-BUCKET": 0,
+                            "NEW_SPECS_POST-BUCKET": 0,
+                        }
+                    )
+            model_file = os.path.join(per_model_dir, f"{_safe_name(model)}.csv")
+            with open(model_file, "w", newline="") as f:
+                fieldnames = [
+                    "SUBJECT",
+                    "CLASS",
+                    "METHOD",
+                    "MODEL",
+                    "SPECFUZZER_SPECS_PRE-BUCKET",
+                    "SPECFUZZER_SPECS_POST-BUCKET",
+                    "TESTS_GENERATED_BY_LLM",
+                    "TESTS_COMPILED",
+                    "NEW_SPECS_FILTERED_PRE-BUCKET",
+                    "NEW_SPECS_POST-BUCKET",
+                ]
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(complete_rows)
+
+            total_generated = sum(r["TESTS_GENERATED_BY_LLM"] for r in complete_rows)
+            total_compiled = sum(r["TESTS_COMPILED"] for r in complete_rows)
+            total_specs_filtered_pre = sum(
+                r["NEW_SPECS_FILTERED_PRE-BUCKET"] for r in complete_rows
+            )
+            total_specs_post_bucket = sum(
+                r["NEW_SPECS_POST-BUCKET"] for r in complete_rows
+            )
+            success_rate = (
+                (total_compiled / total_generated * 100) if total_generated > 0 else 0.0
+            )
+
+            summary_rows.append(
+                {
+                    "MODEL": model,
+                    "SUBJECTS": len({r["SUBJECT"] for r in rows}),
+                    "TESTS_GENERATED_TOTAL": total_generated,
+                    "TESTS_COMPILED_TOTAL": total_compiled,
+                    "SUCCESS_RATE_%": round(success_rate, 2),
+                    "NEW_SPECS_FILTERED_PRE-BUCKET_TOTAL": total_specs_filtered_pre,
+                    "NEW_SPECS_POST-BUCKET_TOTAL": total_specs_post_bucket,
+                }
+            )
+
+        # Write the summary-by-model table (more detailed than best_performing_models)
+        summary_by_model_file = "experiments/results/summary_by_model.csv"
+        with open(summary_by_model_file, "w", newline="") as f:
+            fieldnames = [
+                "MODEL",
+                "SUBJECTS",
+                "TESTS_GENERATED_TOTAL",
+                "TESTS_COMPILED_TOTAL",
+                "SUCCESS_RATE_%",
+                "NEW_SPECS_FILTERED_PRE-BUCKET_TOTAL",
+                "NEW_SPECS_POST-BUCKET_TOTAL",
+            ]
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(sorted(summary_rows, key=lambda r: r["MODEL"]))
 
         # Generate best performing models summary
         best_models = get_best_performing_models(unified_results)
@@ -483,9 +738,8 @@ def main():
                     "MODEL",
                     "SUBJECTS",
                     "GENERATED",
-                    "FIXED",
                     "COMPILED",
-                    "SPECS_FILTERED",
+                    "NEW_SPECS_FILTERED",
                 ]
                 writer = csv.DictWriter(f, fieldnames=fieldnames)
                 writer.writeheader()
@@ -500,11 +754,12 @@ def main():
                     "CLASS",
                     "METHOD",
                     "BEST_MODEL",
-                    "SPECS_AVAILABLE",
-                    "TESTS_GENERATED",
-                    "TESTS_FIXED",
+                    "SPECFUZZER_SPECS_PRE-BUCKET",
+                    "SPECFUZZER_SPECS_POST-BUCKET",
+                    "TESTS_GENERATED_BY_LLM",
                     "TESTS_COMPILED",
-                    "SPECS_FILTERED",
+                    "NEW_SPECS_FILTERED_PRE-BUCKET",
+                    "NEW_SPECS_POST-BUCKET",
                 ]
                 writer = csv.DictWriter(f, fieldnames=fieldnames)
                 writer.writeheader()
@@ -513,11 +768,14 @@ def main():
             print(f"Best model per subject summary written to {subject_summary_file}")
 
         print(f"Comprehensive results written to {main_csv_file}")
+        print(
+            "Per-model detailed CSVs written to experiments/results/by_model and summary_by_model.csv"
+        )
 
         # Display summary following priority order
         print("\n" + "=" * 80)
         print("LLM TEST GENERATION ANALYSIS SUMMARY")
-        print("Priority: Specifications Filtered > Generated → Fixed → Compiled Tests")
+        print("Priority: Specifications Filtered > Generated → Compiled Tests")
         print("=" * 80)
 
         total_subjects = len(set(r["SUBJECT"] for r in unified_results))
@@ -527,37 +785,25 @@ def main():
         print(f"Total experimental configurations: {len(unified_results)}")
 
         # Aggregate statistics
-        total_generated = sum(r["TESTS_GENERATED"] for r in unified_results)
-        total_fixed = sum(r["TESTS_FIXED"] for r in unified_results)
+        total_generated = sum(r["TESTS_GENERATED_BY_LLM"] for r in unified_results)
         total_compiled = sum(r["TESTS_COMPILED"] for r in unified_results)
-        total_specs = sum(r["SPECS_FILTERED"] for r in unified_results)
+        total_specs_filtered = sum(
+            r["NEW_SPECS_FILTERED_PRE-BUCKET"] for r in unified_results
+        )
 
         print("\nAGGREGATE RESULTS:")
-        print(f"  Specifications Filtered: {total_specs}")
+        print(f"  Specifications Filtered: {total_specs_filtered}")
         print(f"  Tests Generated: {total_generated}")
-        print(f"  Tests Fixed: {total_fixed}")
         print(f"  Tests Compiled: {total_compiled}")
 
         # Calculate overall rates
         if total_generated > 0:
-            overall_gen_to_fix = total_fixed / total_generated * 100
+            overall_success_rate = total_compiled / total_generated * 100
         else:
-            overall_gen_to_fix = 0
+            overall_success_rate = 0
 
-        if total_fixed > 0:
-            overall_fix_to_comp = total_compiled / total_fixed * 100
-        else:
-            overall_fix_to_comp = 0
-
-        if total_generated > 0:
-            overall_end_to_end = total_compiled / total_generated * 100
-        else:
-            overall_end_to_end = 0
-
-        print("\nTEST SUCCESS RATES (Generated → Fixed → Compiled):")
-        print(f"  1. Generation → Fix Rate: {overall_gen_to_fix:.2f}%")
-        print(f"  2. Fix → Compilation Rate: {overall_fix_to_comp:.2f}%")
-        print(f"  3. End-to-End Success Rate: {overall_end_to_end:.2f}%")
+        print("\nTEST SUCCESS RATES (Generated → Compiled):")
+        print(f"  Success Rate: {overall_success_rate:.2f}%")
 
         # Show top 3 performing models by specs filtered
         print("\nTOP PERFORMING MODELS (by Specifications Filtered):")
@@ -566,22 +812,21 @@ def main():
             comp = model["COMPILED"]
             comp_rate = (comp / gen * 100) if gen > 0 else 0
             print(
-                f"  {i}. {model['MODEL']}: {model['SPECS_FILTERED']} specs, "
-                f"{gen}→{model['FIXED']}→{comp} tests "
+                f"  {i}. {model['MODEL']}: {model['NEW_SPECS_FILTERED']} specs, "
+                f"{gen}→{comp} tests "
                 f"({comp_rate:.1f}% success)"
             )
 
         # Show best model per subject
         print("\nBEST MODEL PER SUBJECT (by Specifications Filtered):")
         for subject_info in subject_best_models:
-            gen = subject_info["TESTS_GENERATED"]
-            fix = subject_info["TESTS_FIXED"]
+            gen = subject_info["TESTS_GENERATED_BY_LLM"]
             comp = subject_info["TESTS_COMPILED"]
             comp_rate = (comp / gen * 100) if gen > 0 else 0
             print(
                 f"  {subject_info['SUBJECT']}: {subject_info['BEST_MODEL']} "
-                f"({subject_info['SPECS_FILTERED']} specs, "
-                f"{gen}→{fix}→{comp} tests, {comp_rate:.1f}% success)"
+                f"({subject_info['NEW_SPECS_FILTERED_PRE-BUCKET']} specs, "
+                f"{gen}→{comp} tests, {comp_rate:.1f}% success)"
             )
 
         print(f"\nDetailed results available in: {main_csv_file}")
@@ -592,8 +837,7 @@ def main():
 
     else:
         print(
-            "No results found - check that output directory contains "
-            "processed subjects"
+            "No results found - check that output directory contains processed subjects"
         )
 
 
