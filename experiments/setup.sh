@@ -9,16 +9,15 @@ setup_venv() {
     if [ -d ".venv" ]; then
         echo "Virtual environment already exists, activating..."
     else
-        echo "Creating new virtual environment..."
-        python3 -m venv .venv
+        echo "Creating new virtual environment with uv..."
+        uv venv .venv
     fi
-    
+
     # shellcheck disable=SC1091
     source .venv/bin/activate
-    
-    echo "Updating pip and installing dependencies..."
-    pip install --upgrade pip setuptools wheel
-    pip install -r requirements.txt
+
+    echo "Syncing dependencies with uv..."
+    uv sync
 }
 
 setup_venv
@@ -153,7 +152,7 @@ setup_gassert() {
     # Check if gdown is available, install if needed
     if ! command -v gdown >/dev/null 2>&1; then
         echo "Installing gdown for Google Drive downloads..."
-        pip install gdown
+        uv pip install gdown
     fi
     
     download_and_extract "GAssert" "GAssert.tar.gz" \
@@ -190,7 +189,7 @@ setup_daikon
 
 echo "=== Installing SpecValid package ==="
 install_package() {
-    if pip install -e .; then
+    if uv pip install -e .; then
         echo "SpecValid package installed successfully"
     else
         echo "Error: Failed to install SpecValid package"
