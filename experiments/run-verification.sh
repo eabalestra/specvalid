@@ -32,6 +32,7 @@ export SPECS_DIR
 
 VENV="$SPECVALID_DIR/.venv"
 VENV_ACTIVATED=0
+SPECVALID_CMD="${SPECVALID_CMD:-specvalid}"
 
 MODELS=""
 PROMPTS="General_V3"
@@ -59,7 +60,7 @@ while getopts ":m:o:s:ch" opt; do
 		usage
 		exit 1
 		;;
-		esac
+	esac
 done
 
 if [[ -z "$MODELS" ]]; then
@@ -88,9 +89,7 @@ activate_venv() {
 		source "$VENV/bin/activate"
 		VENV_ACTIVATED=1
 	else
-		echo "Error: virtualenv not found at $VENV" >&2
-		echo "Create it with: python3 -m venv $VENV and install requirements." >&2
-		exit 1
+		echo "Virtualenv not found at $VENV; using system Python environment." >&2
 	fi
 }
 
@@ -111,6 +110,11 @@ check_dir_exists "$SPECS_DIR"
 
 activate_venv
 trap deactivate_venv_if_needed EXIT
+
+if ! command -v "$SPECVALID_CMD" >/dev/null 2>&1; then
+	echo "Error: '$SPECVALID_CMD' is not installed or not in PATH." >&2
+	exit 1
+fi
 
 success=0
 failed=0
@@ -157,7 +161,7 @@ while IFS= read -r line; do
 		continue
 	fi
 
-	cmd=(specvalid verify-only
+	cmd=("$SPECVALID_CMD" verify-only
 		"$java_class_src"
 		"$java_test_suite"
 		"$java_test_driver"
@@ -167,7 +171,7 @@ while IFS= read -r line; do
 		-p "$PROMPTS")
 
 	if [[ -n "$OUTPUT_DIR" ]]; then
-		cmd=(specvalid --output-dir "$OUTPUT_DIR" "${cmd[@]:1}")
+		cmd=("$SPECVALID_CMD" --output-dir "$OUTPUT_DIR" "${cmd[@]:1}")
 	fi
 
 	echo "> Running $subject ($class_fq.$method)"

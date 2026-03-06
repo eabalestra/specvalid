@@ -150,9 +150,11 @@ class LLMService:
     except Exception as e:
         print(f"Error initializing OpenAI client: {e}")
 
-    hf_api_key = os.environ.get("API_KEY_HUGGINGFACE")
+    hf_api_key = os.environ.get("HUGGINGFACE_API_KEY") or os.environ.get(
+        "API_KEY_HUGGINGFACE"
+    )
     if not hf_api_key:
-        print("API_KEY_HUGGINGFACE not set. Hugging Face API will not be configured.")
+        print("HUGGINGFACE_API_KEY not set. Hugging Face API will not be configured.")
 
     try:
         gemini_api_key = os.environ.get("GOOGLE_API_KEY")
