@@ -113,6 +113,7 @@ class LLMService:
         "FalconMamba7BInstruct": "tiiuae/falcon-mamba-7b-instruct",
         "FalconMamba7B": "tiiuae/falcon-mamba-7b",
         # OpenAI's chat models
+        "GPT51": "gpt-5.1",
         "GPT4o": "gpt-4o",
         "GPT4oMini": "gpt-4o-mini",
         # 'GPTo1Mini': 'o1-mini', # Tier 5 is required
@@ -150,9 +151,11 @@ class LLMService:
     except Exception as e:
         print(f"Error initializing OpenAI client: {e}")
 
-    hf_api_key = os.environ.get("API_KEY_HUGGINGFACE")
+    hf_api_key = os.environ.get("HUGGINGFACE_API_KEY") or os.environ.get(
+        "API_KEY_HUGGINGFACE"
+    )
     if not hf_api_key:
-        print("API_KEY_HUGGINGFACE not set. Hugging Face API will not be configured.")
+        print("HUGGINGFACE_API_KEY not set. Hugging Face API will not be configured.")
 
     try:
         gemini_api_key = os.environ.get("GOOGLE_API_KEY")
