@@ -8,6 +8,7 @@ dependencies = [
   "huggingface-hub==0.34.1",
   "ollama==0.5.1",
   "openai==1.97.1",
+  "pandas>=3.0.1",
   "pydantic==2.11.7",
   "requests==2.32.4",
 ]
