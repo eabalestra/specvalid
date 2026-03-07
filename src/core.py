@@ -3,6 +3,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -438,7 +439,7 @@ class Core:
             full_qualified_class_name = full_qualified_class_name.replace("/", ".")
 
             cmd = [
-                "python3",
+                sys.executable,
                 "scripts/filter_invariants_of_interest.py",
                 invalid_invs,
                 full_qualified_class_name,
@@ -449,7 +450,7 @@ class Core:
             logger.log(result.stdout)
 
             cmd = [
-                "python3",
+                sys.executable,
                 "scripts/extract_non_filtered_assertions.py",
                 self.args.specfuzzer_assertions_file,
                 f"{model_specs_dir}/interest-specs.csv",
@@ -855,7 +856,7 @@ class Core:
                 helper = repo_root / "scripts" / "single-mutant-result.py"
                 if helper.exists():
                     cmd_helper = [
-                        "python3",
+                        sys.executable,
                         str(helper),
                         str(dest_csv),
                         "1",
@@ -995,7 +996,7 @@ class Core:
 
         if buckets_filter.exists() and specvalid_mutka.exists():
             cmd_buckets = [
-                "python3",
+                sys.executable,
                 str(buckets_filter),
                 str(specvalid_mutka),
                 str(temp_assertions_file),
