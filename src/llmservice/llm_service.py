@@ -113,6 +113,7 @@ class LLMService:
         "FalconMamba7BInstruct": "tiiuae/falcon-mamba-7b-instruct",
         "FalconMamba7B": "tiiuae/falcon-mamba-7b",
         # OpenAI's chat models
+        "GPT51": "gpt-5.1",
         "GPT4o": "gpt-4o",
         "GPT4oMini": "gpt-4o-mini",
         # 'GPTo1Mini': 'o1-mini', # Tier 5 is required

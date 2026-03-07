@@ -249,6 +249,13 @@ def main():
         action="store_true",
         help="Check if all required files exist for each subject",
     )
+    parser.add_argument(
+        "--subjects-file",
+        dest="subjects_file",
+        default=None,
+        help="Path to a custom subjects file (overrides the default experiments/subjects-to-run).",
+        metavar="PATH",
+    )
 
     args = parser.parse_args()
 
@@ -261,7 +268,7 @@ def main():
     project_root, env = setup_environment()
 
     # Path to the file containing the list of subjects
-    subjects_file = project_root / "experiments" / "subjects-to-run"
+    subjects_file = Path(args.subjects_file) if args.subjects_file else project_root / "experiments" / "subjects-to-run"
 
     # Read subjects
     subjects = read_subjects_file(subjects_file)

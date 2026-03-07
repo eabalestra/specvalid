@@ -47,17 +47,19 @@ deactivate_venv_if_needed() {
 
 usage() {
 	cat <<EOF
-Usage: $(basename "$0") -m <model1,model2,...> -p <prompt1,prompt2,...> [-o <output_dir>]
+Usage: $(basename "$0") -m <model1,model2,...> -p <prompt1,prompt2,...> [-o <output_dir>] [-s <subject>]
 
 Options:
   -m   Comma-separated list of models
   -p   Comma-separated list of prompts
   -o   Output directory (optional, defaults to 'output')
+  -s   Run a single subject: "<subject_id> <FullyQualifiedClass> <method>"
   -h   Show this help
 
 Example:
   $(basename "$0") -m "gpt4,gpt4o" -p "promptA,promptB"
   $(basename "$0") -m "gpt4,gpt4o" -p "promptA,promptB" -o "/tmp/experimento1"
+  $(basename "$0") -s "QueueAr_getFront DataStructures.QueueAr getFront" -m "GPT51" -p "General_V1"
 EOF
 	exit 1
 }
@@ -67,12 +69,24 @@ trap deactivate_venv_if_needed EXIT
 MODELS=""
 PROMPTS=""
 OUTPUT_DIR=""
+SINGLE_SUBJECT=""
+TEMP_SUBJECTS_FILE=""
 
-while getopts "m:p:o:h" opt; do
+cleanup_temp_subjects() {
+	if [ -n "${TEMP_SUBJECTS_FILE:-}" ] && [ -f "$TEMP_SUBJECTS_FILE" ]; then
+		rm -f "$TEMP_SUBJECTS_FILE"
+	fi
+	deactivate_venv_if_needed
+}
+
+trap cleanup_temp_subjects EXIT
+
+while getopts "m:p:o:s:h" opt; do
 	case "$opt" in
 	m) MODELS="$OPTARG" ;;
 	p) PROMPTS="$OPTARG" ;;
 	o) OUTPUT_DIR="$OPTARG" ;;
+	s) SINGLE_SUBJECT="$OPTARG" ;;
 	h) usage ;;
 	*) usage ;;
 	esac
@@ -143,11 +157,22 @@ check_api_keys() {
 
 check_api_keys "$MODELS"
 
+# If -s was given, write a temp subjects file with just that one subject
+SUBJECTS_FILE_ARG=""
+if [ -n "${SINGLE_SUBJECT:-}" ]; then
+	TEMP_SUBJECTS_FILE="$(mktemp /tmp/subjects-to-run.XXXXXX)"
+	echo "$SINGLE_SUBJECT" > "$TEMP_SUBJECTS_FILE"
+	SUBJECTS_FILE_ARG="--subjects-file \"$TEMP_SUBJECTS_FILE\""
+fi
+
 echo "Starting test generation experiments"
 echo "  SPECVALID_DIR: $SPECVALID_DIR"
 echo "  MODELS: $MODELS"
 echo "  PROMPTS: $PROMPTS"
 echo "  OUTPUT_DIR: ${OUTPUT_DIR:-default (output)}"
+if [ -n "${SINGLE_SUBJECT:-}" ]; then
+	echo "  SUBJECT: $SINGLE_SUBJECT"
+fi
 echo "  Timestamp: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 echo ""
 
@@ -155,6 +180,9 @@ echo ""
 PYTHON_ARGS="-m \"$MODELS\" -p \"$PROMPTS\""
 if [ -n "${OUTPUT_DIR:-}" ]; then
 	PYTHON_ARGS="$PYTHON_ARGS -o \"$OUTPUT_DIR\""
+fi
+if [ -n "${SUBJECTS_FILE_ARG:-}" ]; then
+	PYTHON_ARGS="$PYTHON_ARGS $SUBJECTS_FILE_ARG"
 fi
 
 # Run test generation experiments
