@@ -268,7 +268,11 @@ def main():
     project_root, env = setup_environment()
 
     # Path to the file containing the list of subjects
-    subjects_file = Path(args.subjects_file) if args.subjects_file else project_root / "experiments" / "subjects-to-run"
+    subjects_file = (
+        Path(args.subjects_file)
+        if args.subjects_file
+        else project_root / "experiments" / "subjects-to-run"
+    )
 
     # Read subjects
     subjects = read_subjects_file(subjects_file)
@@ -337,9 +341,13 @@ def main():
             )
             failed_runs += 1
 
-        print("")
-        print("-" * 80)
-        print("")
+        if total_subjects > 1:
+            print("")
+            print("-" * 80)
+            print("")
+
+    if total_subjects == 1:
+        return
 
     # Summary
     print("Pipeline completed!")
